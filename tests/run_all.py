@@ -176,7 +176,9 @@ def t_docs():
             if "*" in p or "<" in p:
                 continue
             if not os.path.exists(os.path.join(ROOT, p)) and not os.path.exists(os.path.join(ROOT, p.rstrip("/"))):
-                bad.append("%s: path does not exist: %s" % (f, p))
+                ignored = subprocess.run(["git", "check-ignore", "-q", p.rstrip("/")], cwd=ROOT).returncode == 0  # local-only output folders
+                if not ignored:
+                    bad.append("%s: path does not exist: %s" % (f, p))
     assert not bad, "\n".join(bad[:25])
     return "%d documents" % len(files(".md"))
 
