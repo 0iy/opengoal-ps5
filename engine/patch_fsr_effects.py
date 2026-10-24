@@ -101,8 +101,9 @@ def emit_manifest():
     files = sorted({rp(f) for _, f, _, _ in EDITS})
     step = {
         "id": "fsr-effects", "kind": "script", "path": "patch_fsr_effects.py",
-        "description": "Dynamic-resolution (FSR) follow-up: Jak 2/3 pause-menu screen copy is copied back with scaling when the render size changed while the menu was open. Must run after patch_fsr.py v2 (FSR_SRC or JAK_ROOT).",
+        "description": "Dynamic-resolution (FSR) follow-up: Jak 2/3 pause-menu screen copy is copied back with scaling when the render size changed while the menu was open. Needs the fsr step (marker ps5_fsr_v2).",
         "required": False,
+        "requires": ["fsr"],
         "touches": files,
         "markers": [{"file": BD_CPP, "text": MARK}],
         "anchors": [{"id": f"fsr-effects.{eid}", "file": f, "kind": "text", "text": old, "count": 1} for eid, f, old, _ in EDITS],

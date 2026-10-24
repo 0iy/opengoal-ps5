@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Usage: FSR_SRC=<jak root> python3 patch_fsr.py
+"""Usage: FSR_SRC=<jak root> python3 patch_fsr.py [--emit-manifest]
 
 Dynamic internal resolution + FSR 1.0 (EASU + RCAS) for the jak-project OpenGL renderer. See docs/FSR.md.
 
-Idempotent. Target tree: env FSR_SRC is REQUIRED (a jak-project root that contains game/: ~/fsr_src for tests, ~/jak for the live tree). Patches game/graphics/opengl_renderer/OpenGLRenderer.{h,cpp}. The GLSL comes from fsr/fsr.vert
+Idempotent. Target tree: env FSR_SRC or JAK_ROOT is REQUIRED (a jak-project root that contains game/: ~/fsr_src for tests, ~/jak for the live
+tree; sync_upstream.py sets JAK_ROOT). SYNC_FILE_MAP is a JSON {old relative path: new relative path} for files upstream moved.
+`--emit-manifest` prints the manifest step with its anchors for a pristine tree and writes nothing. Patches game/graphics/opengl_renderer/OpenGLRenderer.{h,cpp}. The GLSL comes from fsr/fsr.vert
 and fsr/fsr.frag next to this script and is embedded in the C++ as string literals (no new files on the console).
 
 Run-time switches (environment, set by app/shim/appmain.cpp from ps5.cfg, see docs/FSR.md 'integration'):
@@ -16,13 +18,18 @@ Run-time switches (environment, set by app/shim/appmain.cpp from ps5.cfg, see do
   PS5_FSR_PREWARM   1 (default) = allocate every AUTO render target at the first frame, 0 = lazily
   PS5_FSR_LOG       1 (default) = log scale changes and a status line every 300 frames
 """
+import json
 import os
+import sys
 
-assert os.environ.get("FSR_SRC"), "set FSR_SRC to the jak-project root to patch (e.g. ~/fsr_src for a test copy, ~/jak for the live tree)"
-ROOT = os.path.expanduser(os.environ["FSR_SRC"])
+EMIT = "--emit-manifest" in sys.argv
+_root = os.environ.get("FSR_SRC") or os.environ.get("JAK_ROOT")
+assert _root, "set FSR_SRC (or JAK_ROOT) to the jak-project root to patch (e.g. ~/fsr_src for a test copy, ~/jak for the live tree)"
+ROOT = os.path.expanduser(_root)
+FILE_MAP = json.loads(os.environ.get("SYNC_FILE_MAP") or "{}")
 HERE = os.path.dirname(os.path.abspath(__file__))
-D = os.path.join(ROOT, "game", "graphics", "opengl_renderer")
-HDR, CPP = os.path.join(D, "OpenGLRenderer.h"), os.path.join(D, "OpenGLRenderer.cpp")
+REL_H, REL_C = "game/graphics/opengl_renderer/OpenGLRenderer.h", "game/graphics/opengl_renderer/OpenGLRenderer.cpp"
+HDR, CPP = (os.path.join(ROOT, FILE_MAP.get(r, r)) for r in (REL_H, REL_C))
 h = open(HDR, encoding="utf-8").read()
 c = open(CPP, encoding="utf-8").read()
 import re
@@ -32,15 +39,22 @@ START = "// ---------------------------------------------------------------- __p
 END = "// ---------------------------------------------------------------- end ps5_fsr\n\n"
 
 
-if "ps5_fsr_v2" in c and "dbg_n" in h:
+h0, c0 = h, c
+if EMIT:
+    pass
+elif "ps5_fsr_v2" in c and "dbg_n" in h:
     print("already patched")
     raise SystemExit
 if "ps5_fsr" in c or "ps5_fsr" in h:
     raise SystemExit("this tree has an older FSR patch: start from a clean jak-project tree")
 
 
+ANCHORS = []
+
+
 def rep(s, old, new):
     assert s.count(old) == 1, (s.count(old), old[:70])
+    ANCHORS.append(old)
     return s.replace(old, new)
 
 
@@ -578,6 +592,15 @@ c = rep(c, """  glViewport(render_state->draw_offset_x, render_state->draw_offse
 c = rep(c, "  glActiveTexture(GL_TEXTURE0);\n  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);\n\n  glBindBuffer(GL_ARRAY_BUFFER, 0);",
         "  glActiveTexture(GL_TEXTURE0);\n  if (!(m_fsr.active && fsr_present(window_blit_src, brightness_contrast_color, brightness_contrast_alpha)))\n    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);\n\n  glBindBuffer(GL_ARRAY_BUFFER, 0);")
 
+if EMIT:
+    steps = []
+    for i, old in enumerate(ANCHORS):
+        f = REL_H if old in h0 else REL_C
+        assert old in (h0 if f == REL_H else c0), "anchor depends on an earlier edit: " + old[:70]
+        steps.append({"id": f"fsr.{i + 1}", "file": f, "kind": "text", "text": old, "count": 1})
+    print(json.dumps({"id": "fsr", "kind": "script", "path": "patch_fsr.py", "description": "Dynamic internal resolution + FSR 1.0 (EASU and RCAS) for the OpenGL renderer; the shaders in engine/fsr/ are embedded as string literals. Inactive unless the launcher sets a render scale.",
+                      "required": False, "requires": ["core"], "touches": [REL_H, REL_C], "markers": [{"file": REL_C, "text": "ps5_fsr_v2"}], "anchors": steps}, indent=1))
+    raise SystemExit
 open(HDR, "w", encoding="utf-8", newline="\n").write(h)
 open(CPP, "w", encoding="utf-8", newline="\n").write(c)
 print("ok")

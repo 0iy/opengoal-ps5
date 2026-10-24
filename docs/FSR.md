@@ -72,9 +72,9 @@ JAK_ROOT=~/jak python3 engine/patch_fsr_effects.py
 tools/ps5 build
 ```
 
-Run the FSR patch after `apply_ps5_patches.py`: its anchors are the text of `OpenGLRenderer.cpp/.h` as that script leaves them. `patch_fsr.py` refuses to run without `FSR_SRC`, and refuses a tree that
-carries an older FSR patch (start from a clean tree). `patch_fsr_effects.py` is manifest step `fsr-effects` (optional); `patch_fsr.py` is not yet a manifest step, so `tools/ps5 sync`
-does not apply it.
+Run the FSR patch after `apply_ps5_patches.py` (it touches other files; the anchors in `OpenGLRenderer.cpp/.h` are upstream text). Both scripts take the tree from `FSR_SRC` or `JAK_ROOT`
+and refuse to run without one. `patch_fsr.py` also refuses a tree that carries an older FSR patch (start from a clean tree). Both are optional manifest steps (`fsr`, then `fsr-effects`,
+which requires `fsr`), so `tools/ps5 sync` applies them in that order; `--emit-manifest` prints the step with its anchors.
 
 ## Offline tests (`engine/fsr/test/`)
 

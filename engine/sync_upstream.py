@@ -602,12 +602,16 @@ def cmd_verify(args):
     by_id = {s["id"]: s for s in st["steps"]}
     fm = st.get("file_map", {})
     mp = lambda f: fm.get(f, f)
+
+    def touched(step):  # "touches" entries may be globs (the text tables of ingame-settings)
+        return [mp(str(g.relative_to(tree)).replace("\\", "/")) for t in step.get("touches", []) for g in (sorted(tree.glob(mp(t))) if "*" in t else [tree / mp(t)])]
+
     for step in man["steps"]:
         s = by_id.get(step["id"], {"status": "missing"})
         req = step.get("required", True)
         check(f"step {step['id']} applied" + ("" if req else " (optional)"), s["status"] == "ok" or not req, s["status"])
     changed = set(st["changed"])
-    known = {mp(f) for s in man["steps"] if by_id.get(s["id"], {}).get("status") == "ok" for f in s.get("touches", [])}
+    known = {f for s in man["steps"] if by_id.get(s["id"], {}).get("status") == "ok" for f in touched(s)}
     check("no unexpected changed files", changed <= known, ", ".join(sorted(changed - known)))
     check("every file a step touches changed", known <= changed, ", ".join(sorted(known - changed)))
     miss = []
@@ -617,8 +621,8 @@ def cmd_verify(args):
         for m in step.get("markers", []):
             if m["text"] not in (tree / mp(m["file"])).read_text(encoding="utf-8", errors="replace"):
                 miss.append(f"{step['id']}:{m['file']}:{m['text']!r}")
-        for f in map(mp, step.get("touches", [])):
-            if "__ps5__" not in (tree / f).read_text(encoding="utf-8", errors="replace"):
+        for f in touched(step):  # data and GOAL tables (.json, .gc) carry no comment marker; the step's own markers cover them
+            if f.endswith((".cpp", ".h", ".c")) and "__ps5__" not in (tree / f).read_text(encoding="utf-8", errors="replace"):
                 miss.append(f"{step['id']}:{f}: no __ps5__ marker")
     check("markers present", not miss, "; ".join(miss))
     stray = [str(p.relative_to(tree)) for pat in ("*.rej", "*.orig") for p in tree.rglob(pat) if ".git" not in p.parts]

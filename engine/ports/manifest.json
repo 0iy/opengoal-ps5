@@ -839,10 +839,109 @@
    ]
   },
   {
+   "id": "fsr",
+   "kind": "script",
+   "path": "patch_fsr.py",
+   "description": "Dynamic internal resolution + FSR 1.0 (EASU and RCAS) for the OpenGL renderer; the shaders in engine/fsr/ are embedded as string literals. Inactive unless the launcher sets a render scale.",
+   "required": false,
+   "requires": [
+    "core"
+   ],
+   "touches": [
+    "game/graphics/opengl_renderer/OpenGLRenderer.h",
+    "game/graphics/opengl_renderer/OpenGLRenderer.cpp"
+   ],
+   "markers": [
+    {
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "text": "ps5_fsr_v2"
+    }
+   ],
+   "anchors": [
+    {
+     "id": "fsr.1",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.h",
+     "kind": "text",
+     "text": "  GLuint screen_vao = 0;  // vertex array object for a screen-space draw\n",
+     "count": 1
+    },
+    {
+     "id": "fsr.2",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "void OpenGLRenderer::blit_display(ScopedProfilerNode& prof) {",
+     "count": 1
+    },
+    {
+     "id": "fsr.3",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "#include \"game/kernel/common/kmachine.h\"\n",
+     "count": 1
+    },
+    {
+     "id": "fsr.4",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "void OpenGLRenderer::render(DmaFollower dma, const RenderOptions& settings) {\n",
+     "count": 1
+    },
+    {
+     "id": "fsr.5",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "  g_current_renderer = \"end\";\n}",
+     "count": 1
+    },
+    {
+     "id": "fsr.6",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "  window_fb.multisampled = false;\n\n  // see if the render FBO is still applicable\n  if (settings.save_screenshot || window_resized || !m_fbo_state.render_fbo ||\n      !m_fbo_state.render_fbo->matches(settings.game_res_w, settings.game_res_h,\n                                       settings.msaa_samples)) {\n",
+     "count": 1
+    },
+    {
+     "id": "fsr.7",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "      lg::info(\"FBO Setup: not using second temporary buffer\");\n    }\n  }\n",
+     "count": 1
+    },
+    {
+     "id": "fsr.8",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "  m_render_state.render_fb_x = 0;\n  m_render_state.render_fb_y = 0;\n  m_render_state.render_fb_w = settings.game_res_w;\n  m_render_state.render_fb_h = settings.game_res_h;\n  glViewport(0, 0, settings.game_res_w, settings.game_res_h);\n",
+     "count": 1
+    },
+    {
+     "id": "fsr.9",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "    window_blit_src = &m_fbo_state.resources.render_buffer;\n  }\n",
+     "count": 1
+    },
+    {
+     "id": "fsr.10",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "  glViewport(render_state->draw_offset_x, render_state->draw_offset_y, render_state->draw_region_w,\n             render_state->draw_region_h);\n  glBindTexture(GL_TEXTURE_2D, *window_blit_src->tex_id);",
+     "count": 1
+    },
+    {
+     "id": "fsr.11",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "  glActiveTexture(GL_TEXTURE0);\n  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);\n\n  glBindBuffer(GL_ARRAY_BUFFER, 0);",
+     "count": 1
+    }
+   ]
+  },
+  {
    "id": "fsr-effects",
    "kind": "script",
    "path": "patch_fsr_effects.py",
-   "description": "Dynamic-resolution (FSR) follow-up: Jak 2/3 pause-menu screen copy is copied back with scaling when the render size changed while the menu was open. Must run after patch_fsr.py v2 (FSR_SRC or JAK_ROOT).",
+   "description": "Dynamic-resolution (FSR) follow-up: Jak 2/3 pause-menu screen copy is copied back with scaling when the render size changed while the menu was open. Needs the fsr step (marker ps5_fsr_v2).",
    "required": false,
    "touches": [
     "game/graphics/opengl_renderer/BlitDisplays.cpp",
@@ -884,6 +983,9 @@
      "text": "                    render_fb_h,          // dstY1\n                    GL_COLOR_BUFFER_BIT,  // mask\n                    GL_NEAREST            // filter\n",
      "count": 1
     }
+   ],
+   "requires": [
+    "fsr"
    ]
   },
   {

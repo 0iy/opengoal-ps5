@@ -12,8 +12,8 @@ It works only in `--work` (default `$SYNC_WORK` or `~/sync_work`) and refuses a 
 | `engine/ports/upstream.lock` | pinned upstream commit (base of our tree) + sha256 of the resulting patched diff (determinism check) |
 | `engine/ports/manifest.json` | ordered steps (script or `.patch`), description, required/optional, `requires`, `touches`, `markers`, `anchors` |
 | `engine/ports/patches/*.patch` | edits of the live tree that had no script; captured as patches (see below) |
-| `engine/apply_ps5_patches.py`, `patch_gfxprof.py`, `patch_proftree.py`, `patch_ps5_ingame_settings.py`, `patch_fsr_effects.py`, `patch_import_progress.py` | the patch scripts. They honour `JAK_ROOT`/`HOME` (private copy) and `SYNC_FILE_MAP` (relocation) |
-| `engine/gen_manifest_anchors.py` | one-off: generated the `anchors` of the `core` step from the tables inside `apply_ps5_patches.py` |
+| `engine/apply_ps5_patches.py`, `patch_gfxprof.py`, `patch_proftree.py`, `patch_ps5_ingame_settings.py`, `patch_fsr.py`, `patch_fsr_effects.py`, `patch_import_progress.py` | the patch scripts. They honour `JAK_ROOT`/`HOME` (private copy) and `SYNC_FILE_MAP` (relocation) |
+| `engine/gen_manifest_anchors.py` | one-off: generated the `anchors` of the `core` step from the tables inside `apply_ps5_patches.py` (`patch_fsr.py` and `patch_fsr_effects.py` print their own step with `--emit-manifest`) |
 
 ## Commands
 
@@ -110,7 +110,6 @@ A full link/ninja build is deliberately **not** run (the build scripts write to 
 |---|---|
 | `driver/ps5-opengl.patch` | different upstream (ps5-opengl and Mesa); see [`driver/README.md`](../driver/README.md) |
 | `app/shim/`, `app/glue/` | our own sources, not patches |
-| `engine/patch_fsr.py` | optional and not a manifest step yet; apply it by hand after the core step ([`FSR.md`](FSR.md)) |
 | `engine/ports/patches/0010-*.patch`, `0020-*.patch` | in the manifest; capture two edits that had no script (a `ps5_log` forward declaration in `opengl.cpp`; the slow-frame trigger and 28-line cap of the proftree dump) |
 
 ## Known limits
