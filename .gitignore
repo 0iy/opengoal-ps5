@@ -39,8 +39,6 @@
 /app/shim/launcher_assets.cpp
 /art/out/
 /art/sce_sys/*-source.png
-/tests/conv_test
-/tests/qr_test
 __pycache__/
 *.pyc
 *.o

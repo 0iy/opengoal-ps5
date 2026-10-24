@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build the app art (icon0.png, pic0.dds, pic1.dds) from the OpenGOAL logo files.
+"""Build the app icon and a background image from the OpenGOAL logo files.
 Inputs (next to this script): og_icon.png (OpenGOAL mask), og_logo_text.png (wordmark).
-Outputs go to ./out/. The DDS files reuse the header of an existing 1920x1080 RGBA8 DDS."""
+Outputs (icon0.png, background.png) go to art/out/; the app ships art/sce_sys/icon0.png."""
 import os
 import struct
 import sys
