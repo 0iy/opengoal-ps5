@@ -7,13 +7,11 @@ controller launcher, on-console game import and a patched OpenGL-to-AGC graphics
 
 No game files are included. You need your own legally owned discs, imported from `.iso` images. This project does not support piracy.
 
-| Launcher | Settings | Onboarding page |
-|---|---|---|
-| ![Launcher](docs/img/launcher.png) | ![Settings](docs/img/settings.png) | ![Onboarding page](docs/img/onboarding.png) |
-
-| Jak and Daxter | Jak II | Jak 3 |
-|---|---|---|
-| ![Jak 1](docs/img/jak1.png) | ![Jak 2](docs/img/jak2.png) | ![Jak 3](docs/img/jak3.png) |
+<p align="center">
+<img src="docs/img/launcher.png" width="49%" alt="Launcher"> <img src="docs/img/settings.png" width="49%" alt="Settings">
+<img src="docs/img/onboarding.png" width="49%" alt="Onboarding page"> <img src="docs/img/jak1.png" width="49%" alt="Jak and Daxter">
+<img src="docs/img/jak2.png" width="49%" alt="Jak II"> <img src="docs/img/jak3.png" width="49%" alt="Jak 3">
+</p>
 
 The onboarding screenshot shows simulated values (no import was running); the others are from a console.
 
@@ -22,9 +20,9 @@ The onboarding screenshot shows simulated values (no import was running); the ot
 You need a PS5 on firmware 13.60 (the only version tested) with the ELF loader (9021), kstuff, an FTP service (2121) and ShadowMountPlus running, and a PC on the same network
 with Python 3.
 
-1. Download the release zip and unzip it.
-2. Run `install.bat` (Windows) or `sh install.sh` (Linux, macOS), enter the PS5 address or press Enter to search.
-3. Start OpenGOAL-PS5 on the console and add your games. Fast, from the PC:
+1. Download `OpenGOAL-PS5.zip` from the [latest release](https://github.com/0iy/opengoal-ps5/releases/latest) and unzip it.
+2. Install the app on the console: run `install.bat` (Windows) or `sh install.sh` (Linux, macOS), enter the PS5 address or press Enter to search.
+3. Start **OpenGOAL-PS5** on the console, then add your games from the PC. Paste one line, a small window opens, drop your `.iso` files in it:
 
 **Windows** (PowerShell):
 
@@ -38,7 +36,7 @@ irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 |
 curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
 ```
 
-Or open the address and QR code the app shows on a phone or PC and upload the `.iso` files there (slower). Details: [`docs/INSTALL.md`](docs/INSTALL.md).
+A game is playable about a minute after you start (measured for Jak 1 on a LAN). Or open the address and QR code the app shows on a phone or PC and upload the `.iso` files there (slower). Details: [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ## Status (v0.1.0, early release)
 
@@ -46,7 +44,7 @@ Measured at 1080p, vsync 60 Hz, draw merging and async GPU submit on ([`docs/PER
 
 | Game | State | Frame rate |
 |---|---|---|
-| Jak and Daxter: The Precursor Legacy | boots and plays | 58 to 60 fps in the intro (measured before the latest driver work) |
+| Jak and Daxter: The Precursor Legacy | playable | 58 to 60 fps (title and intro, PAL disc imported from the PC) |
 | Jak II | playable, some visual glitches | about 50 to 58 fps in the city (32 fps without merging and async submit) |
 | Jak 3 | playable, some visual glitches | 59 to 60 fps in gameplay (43 fps without), about 3 frames per 3 s over 20 ms |
 

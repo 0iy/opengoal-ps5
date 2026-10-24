@@ -7,13 +7,11 @@ mit Controller-Launcher, Spielimport direkt auf der Konsole und angepasstem Open
 
 Keine Spieledateien enthalten. Du brauchst deine eigenen, legal erworbenen Discs als `.iso`-Abbild. Piraterie wird nicht unterstuetzt.
 
-| Launcher | Einstellungen | Import-Seite |
-|---|---|---|
-| ![Launcher](docs/img/launcher.png) | ![Einstellungen](docs/img/settings.png) | ![Import-Seite](docs/img/onboarding.png) |
-
-| Jak and Daxter | Jak II | Jak 3 |
-|---|---|---|
-| ![Jak 1](docs/img/jak1.png) | ![Jak 2](docs/img/jak2.png) | ![Jak 3](docs/img/jak3.png) |
+<p align="center">
+<img src="docs/img/launcher.png" width="49%" alt="Launcher"> <img src="docs/img/settings.png" width="49%" alt="Einstellungen">
+<img src="docs/img/onboarding.png" width="49%" alt="Import-Seite"> <img src="docs/img/jak1.png" width="49%" alt="Jak and Daxter">
+<img src="docs/img/jak2.png" width="49%" alt="Jak II"> <img src="docs/img/jak3.png" width="49%" alt="Jak 3">
+</p>
 
 Der Screenshot der Import-Seite zeigt simulierte Werte (es lief kein Import); die anderen stammen von einer Konsole.
 
@@ -22,9 +20,9 @@ Der Screenshot der Import-Seite zeigt simulierte Werte (es lief kein Import); di
 Du brauchst eine PS5 mit Firmware 13.60 (einzige getestete Version): ELF-Loader (9021), kstuff, FTP (2121) und ShadowMountPlus laufen. Dazu einen PC im selben Netzwerk mit Python 3
 und deine Spiele als unveraenderte `.iso`-Abbilder.
 
-1. Release-Zip entpacken.
-2. `install.bat` (Windows) oder `sh install.sh --lang de` (Linux, macOS) starten, PS5-Adresse eingeben oder Enter fuer die Suche.
-3. **OpenGOAL-PS5** auf der Konsole starten und die Spiele hinzufuegen. Am schnellsten vom PC:
+1. `OpenGOAL-PS5.zip` vom [neuesten Release](https://github.com/0iy/opengoal-ps5/releases/latest) laden und entpacken.
+2. App auf der Konsole installieren: `install.bat` (Windows) oder `sh install.sh --lang de` (Linux, macOS) starten, PS5-Adresse eingeben oder Enter fuer die Suche.
+3. **OpenGOAL-PS5** auf der Konsole starten und die Spiele vom PC hinzufuegen: eine Zeile einfuegen, ein kleines Fenster oeffnet sich, `.iso`-Dateien hineinziehen:
 
 **Windows** (PowerShell):
 
