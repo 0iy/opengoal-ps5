@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Resident payload: keeps the PS5 from entering rest mode / showing the screen saver while we work.
 // Every 20 s: reset the auto-power-down timer, turn the screen saver off, extend any shutdown timer.
 // Single instance (guarded by a TCP port bind). Heartbeat goes out as UDP broadcast on port 9999.

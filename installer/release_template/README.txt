@@ -20,6 +20,7 @@ Install
    Without Python (Windows): .\Install-OpenGOAL.ps1 -Ps5 <your PS5 IP>
 3. On the PS5 open the "OpenGOAL" tile, then open http://<PS5 IP>:8080 to send your own game images.
 Verify the download with SHA256SUMS.
+Licences: LICENSE (GPL-3.0-or-later), THIRD_PARTY_NOTICES.md and LICENSES/ (components and their licence texts).
 
 Using the launcher
 ------------------

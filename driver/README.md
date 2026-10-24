@@ -1,6 +1,6 @@
 # Graphics driver
 
-OpenGOAL-PS5 draws through the [ps5-opengl](https://github.com/blackbearreloaded/ps5-opengl) SDK (Mesa 26.2 with a gallium driver for the
+OpenGOAL-PS5 draws through the ps5-opengl SDK (BlackBearReloaded, GPL-3.0-or-later; the original repository no longer exists, a mirror with the identical release archive is [JVK3R/ps5-opengl](https://github.com/JVK3R/ps5-opengl)) (Mesa 26.2 with a gallium driver for the
 PS5 GPU, AGC command buffers). This folder holds our changes to that SDK and the scripts that compile them.
 
 | Path | Content |
@@ -35,7 +35,7 @@ Measured effect and the reasoning behind each change: [`docs/PERFORMANCE.md`](..
 Prerequisites: WSL2 Ubuntu with the packages in [`docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md), the PS5 payload SDK in `~/ps5app/.deps` and the
 app packaging tree `~/ogapp` (`app/setup_ogapp.sh`).
 
-1. Download `sdk.tgz` of the ps5-opengl SDK release 1.0.0 (sha256 `f93643c04c843d56143b00951df1f8042ea7706ae9f19e4e9abf158e1ead77c5`) to `~/gl/sdk.tgz`.
+1. Download `ps5-opengl-sdk-1.0.0.tar.gz` of the ps5-opengl SDK release v1.0.0 from the mirror above and save it as `~/gl/sdk.tgz` (sha256 `f93643c04c843d56143b00951df1f8042ea7706ae9f19e4e9abf158e1ead77c5`).
 2. `bash driver/build/setup.sh` unpacks it to `~/gl`, applies `ps5-opengl.patch` to `~/gl/src/ps5-opengl` and links `~/drv`.
    The compile step needs Mesa headers and the generated shader compiler sources from the SDK's own source tree. Prepare that tree as
    the SDK describes (`fetch-sources.py` in its `tools/`, `toolchain/build-opengnm-psbc.sh`, `toolchain/build-mesa-ps5.sh`); it creates

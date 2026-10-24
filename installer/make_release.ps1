@@ -16,6 +16,9 @@ Copy-Item "$here\release_template\*" $out -Recurse -Force
 Copy-Item "$here\gui" "$out\gui" -Recurse -Force; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$out\gui\__pycache__"
 Copy-Item "$here\bootstrap.ps1", "$here\bootstrap.sh" $out -Force
 Copy-Item "$here\pc_import.py" $out -Force
+# licences travel with the binaries (GPL, OFL font notice, third-party notices)
+Copy-Item "$root\LICENSE", "$root\THIRD_PARTY_NOTICES.md" $out -Force
+Copy-Item "$root\LICENSES" "$out\LICENSES" -Recurse -Force
 
 # SHA256SUMS over every file in the bundle (sha256sum format, forward-slash relative paths)
 $sums = Get-ChildItem $out -Recurse -File | Where-Object { $_.Name -ne 'SHA256SUMS' } | ForEach-Object {

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Payload: launch an application through the system's launcher service. Title id from /data/launch_app.txt.
 // Reports via UDP broadcast on port 9999 (same channel as killapp).
 #include <arpa/inet.h>

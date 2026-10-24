@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Payload: close an application through the system's own launcher service (works for suspended apps).
 // Reads the title id from /data/kill_app.txt, resolves its app id, and kills it. Reports via UDP broadcast.
 #include <arpa/inet.h>

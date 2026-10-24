@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Payload: read kstuff's enable flags in kernel memory (firmware 13.60 offsets from kstuff-lite prosper0gdb/offsets/13_60.h).
 // 0xdeb7 = enabled, 0xffff = disabled. Read-only; set KSTUFF_ENABLE=1 at build time to write 0xdeb7 where it reads 0xffff.
 #include <arpa/inet.h>

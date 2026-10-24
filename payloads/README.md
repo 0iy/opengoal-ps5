@@ -11,6 +11,12 @@ Small ELFs that are sent to the console's ELF loader (port 9021). The prebuilt `
 | `klog_dump.c` | developers | copies the kernel log to UDP 9999 (`-DALL` for everything, otherwise remote-play and network lines); no prebuilt ELF |
 | `kstuff_state.c` | developers | reads kstuff's enable flag (read-only); no prebuilt ELF |
 
+## Origin and licence
+
+Every `.elf` here is built from the `.c` file of the same name with `build.sh` and the PS5 payload SDK v0.42. The ELFs contain our code plus the SDK's runtime objects, so they are
+GPL-3.0-or-later like the sources (`THIRD_PARTY_NOTICES.md`, section 4, lists the sha256 of each). No third-party binary is stored in this directory; the loader, kstuff, FTP and shell
+servers you send them to come from their own projects.
+
 ## Rebuild
 
 ```

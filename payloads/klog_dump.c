@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Payload: read /dev/klog for ~20 s, send lines matching remote-play/NP keywords (or all with -DALL) over UDP broadcast 9999.
 #include <arpa/inet.h>
 #include <fcntl.h>

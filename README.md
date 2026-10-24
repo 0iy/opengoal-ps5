@@ -104,8 +104,8 @@ Use it only with games you own and on a console you own.
 
 ## Credits
 
-[OpenGOAL / jak-project](https://github.com/open-goal/jak-project) (ISC), [ps5-opengl](https://github.com/blackbearreloaded/ps5-opengl) and
-[ps5-native-app-boilerplate](https://github.com/blackbearreloaded/ps5-native-app-boilerplate) (GPL-3.0-or-later), [Mesa](https://www.mesa3d.org),
+[OpenGOAL / jak-project](https://github.com/open-goal/jak-project) (ISC), ps5-opengl (BlackBearReloaded; the original repository is gone, see [`driver/README.md`](driver/README.md)) and
+[ps5-native-app-boilerplate](https://github.com/drakmor/ps5-native-app-boilerplate) (GPL-3.0-or-later), [Mesa](https://www.mesa3d.org),
 [ps5-payload-dev](https://github.com/ps5-payload-dev) (SDK, ftpsrv, shsrv), kstuff, ShadowMountPlus, etaHEN, FFmpeg (ATRAC9 tables), Noto Sans JP (OFL).
 Full list: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 

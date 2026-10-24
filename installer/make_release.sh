@@ -13,6 +13,8 @@ chmod +x "$out/install.sh"
 # one-liner GUI: gui/, pc_import.py and the bootstrap scripts travel inside the bundle too
 cp -r "$here/gui" "$out/gui"; rm -rf "$out/gui/__pycache__"; cp "$here/bootstrap.ps1" "$here/bootstrap.sh" "$out/"
 cp "$here/pc_import.py" "$out/"
+# licences travel with the binaries (GPL, OFL font notice, third-party notices)
+cp "$root/LICENSE" "$root/THIRD_PARTY_NOTICES.md" "$out/"; cp -r "$root/LICENSES" "$out/LICENSES"
 (cd "$out" && find . -type f ! -name SHA256SUMS | sed 's|^\./||' | sort | xargs sha256sum > SHA256SUMS)
 rm -f "$root/release/OpenGOAL-PS5.zip"
 python3 -c "import shutil,sys; shutil.make_archive(sys.argv[1], 'zip', sys.argv[2], 'OpenGOAL-PS5')" "$root/release/OpenGOAL-PS5" "$root/release"

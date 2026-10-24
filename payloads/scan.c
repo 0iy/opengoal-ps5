@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Payload: ask ShadowMountPlus (loopback API) for an immediate scan so newly deployed titles register.
 #include <arpa/inet.h>
 #include <netinet/in.h>
