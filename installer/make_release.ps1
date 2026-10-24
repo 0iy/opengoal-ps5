@@ -2,10 +2,12 @@
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot             # installer\
 $root = Split-Path -Parent $here  # repository root
+# the setup script cannot work without the agent payload: stop here instead of shipping a bundle that fails on the user's machine
+if (-not (Test-Path "$root\payloads\ogagent.elf")) { throw 'missing payloads\ogagent.elf: build it first (bash payloads/build.sh payloads/ogagent.c payloads/ogagent.elf)' }
 $wslHere = (wsl wslpath -a ($root -replace '\\', '/')).Trim()
 $out = "$root\release\OpenGOAL-PS5"
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
-New-Item -ItemType Directory -Force "$out\app", "$out\tools" | Out-Null
+New-Item -ItemType Directory -Force "$out\app", "$out\tools", "$out\payloads" | Out-Null
 
 # the built title folder (eboot.bin, sce_sys, sce_module, assets)
 wsl -e bash -lc "rm -rf $wslHere/release/OpenGOAL-PS5/app/LAPY77001 && cp -r ~/ogapp/dist/LAPY77001 $wslHere/release/OpenGOAL-PS5/app/LAPY77001"
@@ -15,7 +17,8 @@ Copy-Item "$here\release_template\*" $out -Recurse -Force
 # one-liner GUI: gui/, pc_import.py and the bootstrap scripts travel inside the bundle too
 Copy-Item "$here\gui" "$out\gui" -Recurse -Force; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$out\gui\__pycache__"
 Copy-Item "$here\bootstrap.ps1", "$here\bootstrap.sh" $out -Force
-Copy-Item "$here\pc_import.py" $out -Force
+Copy-Item "$here\pc_import.py", "$here\ps5_setup.py" $out -Force
+Copy-Item "$root\payloads\ogagent.elf", "$root\payloads\scan.elf" "$out\payloads" -Force
 # licences travel with the binaries (GPL, OFL font notice, third-party notices)
 Copy-Item "$root\LICENSE", "$root\THIRD_PARTY_NOTICES.md" $out -Force
 Copy-Item "$root\LICENSES" "$out\LICENSES" -Recurse -Force

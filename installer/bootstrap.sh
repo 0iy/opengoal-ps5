@@ -9,7 +9,8 @@ DIR=$HOME/.opengoal-ps5; ZIP=OpenGOAL-PS5-gui.zip
 echo "OpenGOAL-PS5 will now:"
 echo "  1. download $BASE/SHA256SUMS and $BASE/$ZIP"
 echo "  2. verify the zip against SHA256SUMS (stops if it does not match)"
-echo "  3. unpack it to $DIR/app and open the import window (gui/macos/OpenGOAL-PS5.command)"
+echo "  3. unpack it to $DIR/app, run the console setup (ps5_setup.py: finds the PS5, installs what is missing; set OGPS5_SKIP_SETUP=1 to skip)"
+echo "  4. open the import window (gui/macos/OpenGOAL-PS5.command)"
 mkdir -p "$DIR"; TMP=$DIR/download; rm -rf "$TMP"; mkdir "$TMP"
 curl -fsSL "$BASE/SHA256SUMS" -o "$TMP/SHA256SUMS"
 curl -fsSL "$BASE/$ZIP" -o "$TMP/$ZIP"
@@ -23,5 +24,14 @@ rm -rf "$DIR/app"; mkdir -p "$DIR/app"
 if command -v unzip >/dev/null; then unzip -q "$TMP/$ZIP" -d "$DIR/app"; else python3 -c 'import sys,zipfile;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$TMP/$ZIP" "$DIR/app"; fi
 rm -rf "$TMP"
 [ -z "${OGPS5_NORUN:-}" ] || { echo "Unpacked to $DIR/app (OGPS5_NORUN set)."; exit 0; }
+if [ -z "${OGPS5_SKIP_SETUP:-}" ]; then
+  PY=$(command -v python3 || command -v python || true)
+  if [ -n "$PY" ] && [ -f "$DIR/app/ps5_setup.py" ]; then
+    # stdin of a piped script is the script itself: give the setup the terminal (it may ask a question)
+    "$PY" "$DIR/app/ps5_setup.py" </dev/tty || { echo "The console setup did not finish. Run it again: $PY $DIR/app/ps5_setup.py" >&2; exit 1; }
+  else
+    echo "Python 3 not found: skipping the console setup. Later run: python3 $DIR/app/ps5_setup.py"
+  fi
+fi
 # stdin of a piped script is the script itself: give the GUI the terminal (needed only for the text fallback)
 exec bash "$DIR/app/gui/macos/OpenGOAL-PS5.command" </dev/tty

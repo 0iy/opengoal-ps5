@@ -10,7 +10,8 @@ $Zip = 'OpenGOAL-PS5-gui.zip'
 Write-Host 'OpenGOAL-PS5 will now:' -ForegroundColor Cyan
 Write-Host "  1. download $Base/SHA256SUMS and $Base/$Zip"
 Write-Host '  2. verify the zip against SHA256SUMS (stops if it does not match)'
-Write-Host "  3. unpack it to $Dir\app and open the import window (PowerShell script gui\windows\OpenGOAL-PS5.ps1)"
+Write-Host "  3. unpack it to $Dir\app, run the console setup (ps5_setup.py: finds the PS5, installs what is missing; set OGPS5_SKIP_SETUP=1 to skip)"
+Write-Host '  4. open the import window (PowerShell script gui\windows\OpenGOAL-PS5.ps1)'
 New-Item -ItemType Directory -Force $Dir | Out-Null
 $tmp = Join-Path $Dir 'download'
 if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
@@ -27,4 +28,18 @@ if (Test-Path $app) { Remove-Item $app -Recurse -Force }
 Expand-Archive (Join-Path $tmp $Zip) -DestinationPath $app -Force
 Remove-Item $tmp -Recurse -Force
 if ($env:OGPS5_NORUN) { Write-Host "Unpacked to $app (OGPS5_NORUN set)."; return }
+if (-not $env:OGPS5_SKIP_SETUP) {
+    $py = $null
+    foreach ($n in 'python', 'python3', 'py') {
+        $c = Get-Command $n -ErrorAction SilentlyContinue | Select-Object -First 1
+        # the Microsoft Store stub is found by name but cannot run: require a real Python 3.7+
+        if ($c -and -not $py) { & $c.Source -c 'import sys; sys.exit(0 if sys.version_info >= (3, 7) else 1)' 2>$null; if ($LASTEXITCODE -eq 0) { $py = $c.Source } }
+    }
+    if ($py) {
+        & $py (Join-Path $app 'ps5_setup.py')
+        if ($LASTEXITCODE -ne 0) { Write-Host "The console setup did not finish. Run it again: $py $app\ps5_setup.py" -ForegroundColor Yellow; return }
+    } else {
+        Write-Host "Python 3 not found: skipping the console setup. Install Python 3, then run: python $app\ps5_setup.py" -ForegroundColor Yellow
+    }
+}
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File (Join-Path $app 'gui\windows\OpenGOAL-PS5.ps1')

@@ -6,13 +6,15 @@ Play Jak and Daxter: The Precursor Legacy, Jak II and Jak 3 on a jailbroken PS5.
 
 What you need
 -------------
-* PS5 with your usual setup running: etaHEN, ShadowMountPlus, FTP (port 2121), ELF loader (port 9021).
+* PS5 with the ELF loader (port 9021) running. kstuff-lite and ShadowMountPlus are loaded for you by ps5_setup.py (or load them yourself).
 * Your own Jak and Daxter games as unmodified .iso images (this bundle contains no game files).
 
 Install
 -------
 1. Unzip this folder on a PC in the same network as the PS5.
-2. Run the installer (needs Python 3):
+2. Run the setup (needs Python 3): python ps5_setup.py   (python3 on Linux/macOS; add --with-kstuff to allow loading kstuff-lite)
+   It finds the PS5, loads what is missing, uploads and starts the app. Run it again at any time.
+   Old way over FTP (needs ftpsrv on port 2121 and ShadowMountPlus already running):
      Windows:      double-click install.bat
      Linux/macOS:  sh install.sh
    It finds the PS5, checks the services, uploads the app and tells you what to do next.
