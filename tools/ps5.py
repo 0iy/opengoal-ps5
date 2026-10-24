@@ -15,6 +15,7 @@
   ps5 perf suite <game> <seconds> <label> "<flags>" ...
   ps5 perf trace stats|stages|mip|multidraw <trace.bin ...>
   ps5 qa [options]                  QA pipeline (--quick, --full, --analyze DIR, ...)
+  ps5 setup [options]               find the console and install what is missing (installer/ps5_setup.py)
   ps5 import [options]              game import from the PC (installer/pc_import.py)
   ps5 upload <game> <iso>           upload an ISO through the console web page
   ps5 sync [options]                upstream sync (engine/sync_upstream.py)
@@ -114,6 +115,8 @@ def main(argv):
         return perf(rest)
     if cmd == "qa":
         return script(os.path.join(TOOLS, "qa_pipeline.py"), rest)
+    if cmd == "setup":
+        return script(os.path.join(ROOT, "installer", "ps5_setup.py"), rest)
     if cmd == "import":
         return script(os.path.join(ROOT, "installer", "pc_import.py"), rest)
     if cmd == "upload":
