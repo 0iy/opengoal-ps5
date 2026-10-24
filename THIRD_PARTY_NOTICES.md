@@ -137,7 +137,7 @@ repository. No third-party binary is stored here.
 | `launchapp.elf` | `launchapp.c` | `7fcaa354f8b98b0d78002081ef879d5c86ad1536a604e7a70a295728a11ec8d4` | no |
 | `scan.elf` | `scan.c` | `07fa18dd2c63b9865a1f367236dde9a3c7e995005b05321e159b7dc2a1c0fb1d` | yes (bundle folder `tools`) |
 | `keepalive.elf` | `keepalive.c` | `460cbd5584644d756f6e18ac413a7c2347943b3238809d0403b19dd8e6010309` | no |
-| `ogagent.elf` | `ogagent.c` (own work, GPL-3.0-or-later) | `f910068d95be4a25de3c616e8dad49d611b6d69b5647875a5bb328d0635d7a1e` | yes (bundle folder `payloads`; `ps5_setup.py` patches a copy) |
+| `ogagent.elf` | `ogagent.c` (own work, GPL-3.0-or-later) | `631afec507bca3f7fbb2fc87a061cf68284175075c89853465012d17683eed8f` | yes (bundle folder `payloads`; `ps5_setup.py` patches a copy) |
 
 `ogagent.elf` is stored with its token unpatched (32 filler bytes after the marker `OGAGENT_TOKEN:`); the hash above is of that file, the setup script patches a copy.
 
@@ -151,7 +151,7 @@ load them. Licences were read from the GitHub repositories on 2026-10-24.
 
 | Component | Use | Licence | Source |
 |---|---|---|---|
-| kstuff / kstuff-lite 1.11 | kernel patches so the fake-signed app starts | **no licence file in either repository** (checked `EchoStretch/kstuff-lite`, `ps5-payload-dev/kstuff`), so no right to redistribute is granted; ask the authors before bundling | EchoStretch/kstuff-lite release v1.11 |
+| kstuff / kstuff-lite 1.11 | kernel patches so the fake-signed app starts | **no licence file in either repository** (checked `EchoStretch/kstuff-lite`, `ps5-payload-dev/kstuff`), so no right to redistribute is granted; not bundled, only fetched from the author's own release with the user's consent. Re-checked 2026-10-24: still no licence file in either repository, no maintained alternative known for 13.60 | EchoStretch/kstuff-lite release v1.11 |
 | ShadowMountPlus 1.7beta7 (release tag `1.7beta7`) | mounts the app folder | GPL-3.0 | github.com/drakmor/ShadowMountPlus (assets `shadowmountplus.elf`, `ShadowMountPlus_1.7beta7.zip`) |
 | ftpsrv (v0.21.1), shsrv (v0.20), elfldr (latest releases at check time) | FTP on 2121, shell on 2323, ELF loader on 9021 | GPL-3.0 | github.com/ps5-payload-dev/{ftpsrv,shsrv,elfldr} |
 | etaHEN | jailbreak environment, optional | GPL-3.0 | github.com/LightningMods/etaHEN |

@@ -24,6 +24,9 @@ controller launcher, fast game import from your PC and a patched OpenGL-to-AGC g
 
 > **No game files are included.** You need your own legally owned discs, imported from `.iso` images. This project does not support piracy.
 
+> [!WARNING]
+> **Experimental, in testing.** This is new software and it can be unstable or unreliable on your console. It was tested on one console only (CFI-2016, firmware 13.60). Expect bugs, crashes and visual glitches; the setup script and the release are fresh and may fail in ways I have not seen. **Testers, feedback, issues and pull requests are very welcome**: see [Help test](#help-test).
+
 <table>
 <tr>
 <td width="33%" valign="top"><b>60 fps</b><br>Jak 3 sits at vsync. Jak 2 reaches 50 to 58 in the city, up from 32.</td>
@@ -99,8 +102,16 @@ v0.1.0, early release. Measured at 1080p, vsync 60 Hz, draw merging and async GP
 | Jak II | 🟡 playable, some visual glitches | about 50 to 58 fps in the city (32 fps without merging and async submit) |
 | Jak 3 | 🟡 playable, some visual glitches | 59 to 60 fps in gameplay (43 fps without), about 3 frames per 3 s over 20 ms |
 
-Known issues: visual glitches in places, occasional frame-time spikes, 4K output is much slower than 1080p on the GPU side. FSR upscaling and dynamic resolution are experimental
+Known issues: the one-command setup is new and only verified on one console; visual glitches in places, occasional frame-time spikes, 4K output is much slower than 1080p on the GPU side. FSR upscaling and dynamic resolution are experimental
 ([`docs/FSR.md`](docs/FSR.md)). Only firmware 13.60 is tested.
+
+## Help test
+
+Real feedback is the most useful thing right now. If you try it, please tell me what happened, also when everything worked:
+
+- Open a [test report](https://github.com/0iy/opengoal-ps5/issues/new?template=test-report.yml) with your console model, firmware and what worked or not. Run the setup with `--debug` and attach `ps5_setup_debug.log` (tokens are masked; remove anything private).
+- Found a bug? Open a [bug report](https://github.com/0iy/opengoal-ps5/issues/new?template=bug.yml).
+- Want to fix or add something? Pull requests are welcome, see [`CONTRIBUTING.md`](CONTRIBUTING.md). Small, measured changes are easiest to review.
 
 ## How it fits together
 
@@ -141,6 +152,7 @@ flowchart LR
 |---|---|
 | Setup waits at "ELF loader" | start the exploit on the PS5; the setup continues by itself (or run it again) |
 | App refused at start (`0x80020008`) | OnionHEN was loaded first; restart the jailbreak chain without it |
+| Setup says a suspended copy blocks the start | close the game on the PS5 (home screen, Options, Close Game); if it stays, restart the jailbreak chain and run the setup again |
 | Black screen or crash in game | turn off draw merging or async submit in the launcher settings, restart the app |
 | Import stops | keep the console awake, check the free disk space, see [`docs/ONBOARDING_WEB.md`](docs/ONBOARDING_WEB.md) |
 | Everything silent after rest mode | run the exploit and the loader again; ports 2121 and 9021 may survive, the app may not |

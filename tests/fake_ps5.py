@@ -46,8 +46,10 @@ class FakeConsole:
         self.received = []          # (kind, bytes) in arrival order
         self.kstuff = self.smp = self.app_running = False
         self.extra_procs = []       # e.g. ["onionhen"]
+        self.stuck = False          # a suspended copy of the app (process state STOP) that blocks every launch
         self.token = None
         self.files, self.dirs, self.puts, self.log_lines = {}, set(), [], []
+        self.modes = {}             # path -> mode string of the last PUT
         self.shell_cmds, self.t0 = [], time.time()
         self.ftp_banner = None
         self.shell = False
@@ -182,6 +184,9 @@ class FakeConsole:
         for p in out:
             if p["name"] == "eboot.bin":
                 p["title"] = "LAPY77001"
+            p["stopped"] = False
+        if self.stuck:
+            out.append({"pid": 1883, "name": "eboot.bin", "title": "LAPY77001", "stopped": True})
         return out
 
     # ---- the app
@@ -258,6 +263,7 @@ class FakeConsole:
                     with console.lock:
                         console.files[q["path"]] = body
                         console.puts.append(q["path"])
+                        console.modes[q["path"]] = q.get("mode", "0644")
                     return self.reply(200, {"ok": True, "size": len(body)})
                 if m == "GET" and p == "/v1/file":
                     d = console.files.get(q["path"])

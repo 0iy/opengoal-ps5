@@ -24,6 +24,9 @@ Controller-Launcher, schnellem Spielimport vom PC und einem angepassten OpenGL-z
 
 > **Keine Spieldateien enthalten.** Du brauchst deine eigenen, legal erworbenen Discs als `.iso`-Abbild. Das Projekt unterstuetzt keine Raubkopien.
 
+> [!WARNING]
+> **Experimentell, in der Testphase.** Neue Software, die auf deiner Konsole instabil oder unzuverlaessig sein kann. Getestet auf genau einer Konsole (CFI-2016, Firmware 13.60). Rechne mit Fehlern, Abstuerzen und Grafikfehlern; Setup-Skript und Release sind frisch und koennen auf Weisen scheitern, die ich nicht kenne. **Tester, Feedback, Issues und Pull Requests sind sehr willkommen**: siehe [Mithelfen](#mithelfen).
+
 <table>
 <tr>
 <td width="33%" valign="top"><b>60 fps</b><br>Jak 3 liegt am vsync. Jak 2 erreicht in der Stadt 50 bis 58, vorher 32.</td>
@@ -100,7 +103,15 @@ v0.1.0, frueher Release. Gemessen bei 1080p, vsync 60 Hz, mit Draw-Zusammenfassu
 | Jak 2 | 🟡 spielbar, einzelne Grafikfehler | etwa 50 bis 58 fps in der Stadt (32 fps ohne) |
 | Jak 3 | 🟡 spielbar, einzelne Grafikfehler | 59 bis 60 fps im Spiel (43 fps ohne) |
 
-Bekannt: einzelne Grafikfehler, gelegentliche Ruckler. FSR-Hochskalierung ist experimentell ([`docs/FSR.md`](docs/FSR.md)).
+Bekannt: das Ein-Befehl-Setup ist neu und nur auf einer Konsole geprueft; einzelne Grafikfehler, gelegentliche Ruckler. FSR-Hochskalierung ist experimentell ([`docs/FSR.md`](docs/FSR.md)).
+
+## Mithelfen
+
+Echtes Feedback ist gerade das Wichtigste. Sag bitte, was passiert ist, auch wenn alles lief:
+
+- [Testbericht](https://github.com/0iy/opengoal-ps5/issues/new?template=test-report.yml) mit Konsolenmodell, Firmware und was ging oder nicht. Setup mit `--debug` starten und `ps5_setup_debug.log` anhaengen (Tokens sind maskiert; Privates entfernen).
+- Fehler gefunden? [Fehlerbericht](https://github.com/0iy/opengoal-ps5/issues/new?template=bug.yml).
+- Etwas verbessern? Pull Requests sind willkommen, siehe [`CONTRIBUTING.md`](CONTRIBUTING.md). Kleine, gemessene Aenderungen lassen sich am leichtesten pruefen.
 
 ## Entwicklung
 

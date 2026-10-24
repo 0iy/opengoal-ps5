@@ -106,7 +106,7 @@ static void lg(const char* fmt, ...) {
 }
 
 // =================================================================================================== platform layer
-typedef struct { int pid; char name[40]; char title[16]; } ProcInfo;
+typedef struct { int pid; char name[40]; char title[16]; int stopped; } ProcInfo;
 typedef struct { char path[96]; char type[24]; uint64_t free_b, total_b; } MountInfo;
 
 #ifdef OG_HOST
@@ -127,10 +127,10 @@ static int plat_procs(ProcInfo* o, int max) {
     snprintf(p, sizeof p, "/proc/%d/comm", pid);
     FILE* f = fopen(p, "r");
     if (f) { if (fgets(nm, sizeof nm, f)) nm[strcspn(nm, "\n")] = 0; fclose(f); }
-    o[n].pid = pid; snprintf(o[n].name, sizeof o[n].name, "%s", nm); o[n].title[0] = 0; n++;
+    o[n].pid = pid; snprintf(o[n].name, sizeof o[n].name, "%s", nm); o[n].title[0] = 0; o[n].stopped = 0; n++;
   }
   if (d) closedir(d);
-  if (g_fake_running) { o[n].pid = 4242; snprintf(o[n].name, sizeof o[n].name, "eboot.bin"); snprintf(o[n].title, sizeof o[n].title, OG_TITLE); n++; }
+  if (g_fake_running) { o[n].pid = 4242; snprintf(o[n].name, sizeof o[n].name, "eboot.bin"); snprintf(o[n].title, sizeof o[n].title, OG_TITLE); o[n].stopped = 0; n++; }
   return n;
 }
 static int plat_mounts(MountInfo* o, int max) {
@@ -198,23 +198,31 @@ static int title_ok(const char* t) {  // XXXX00000 shape
   return t[9] == 0;
 }
 static int plat_procs(ProcInfo* o, int max) {
-  int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
+  int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PROC, 0};  // as the SDK's ps sample: KERN_PROC_ALL answers ENOENT on the PS5
   size_t len = 0;
-  if (sysctl(mib, 3, NULL, &len, NULL, 0) || len == 0) return 0;
+  static int dbg_left = 3;                     // the first few failures are logged: a silent empty process list hid ShadowMountPlus from the setup
+  int r1 = sysctl(mib, 4, NULL, &len, NULL, 0), e1 = errno;
+  if (r1 || len == 0) { if (dbg_left-- > 0) lg("procs: size query r=%d errno=%d len=%zu", r1, e1, len); return 0; }
   len += len / 4 + 8192;
   char* buf = malloc(len);
   if (!buf) return 0;
   int n = 0;
-  if (sysctl(mib, 3, buf, &len, NULL, 0) == 0) {
+  size_t want = len;
+  int r2 = sysctl(mib, 4, buf, &len, NULL, 0), e2 = errno;
+  if (r2 || len < sizeof(int) || ((struct kinfo_proc*)buf)->ki_structsize <= 0) {
+    if (dbg_left-- > 0) lg("procs: read r=%d errno=%d len=%zu/%zu first_structsize=%d sizeof=%zu", r2, e2, len, want, len >= sizeof(int) ? ((struct kinfo_proc*)buf)->ki_structsize : -1, sizeof(struct kinfo_proc));
+  }
+  if (r2 == 0) {
     for (size_t off = 0; off + sizeof(int) <= len && n < max;) {
       struct kinfo_proc* kp = (struct kinfo_proc*)(buf + off);
       if (kp->ki_structsize < (int)sizeof(int) || off + (size_t)kp->ki_structsize > len) break;
       o[n].pid = kp->ki_pid;
       snprintf(o[n].name, sizeof o[n].name, "%.30s", kp->ki_comm);
       o[n].title[0] = 0;
-      unsigned char ai[512];                   // SceAppInfo: u32 app_id, u32 unknown, u32 app_type, char title_id[10], ...
+      o[n].stopped = kp->ki_stat == 4;           // SSTOP: a suspended process, e.g. an app that never got to main
+      unsigned char ai[512];                   // SDK app_info_t: u32 app_id, u64 unknown (8-aligned), u32 app_type, char title_id[10] at byte 20, ...
       memset(ai, 0, sizeof ai);
-      if (sceKernelGetAppInfo(kp->ki_pid, ai) == 0 && title_ok((const char*)(ai + 12))) snprintf(o[n].title, sizeof o[n].title, "%s", (const char*)(ai + 12));
+      if (sceKernelGetAppInfo(kp->ki_pid, ai) == 0 && title_ok((const char*)(ai + 20))) snprintf(o[n].title, sizeof o[n].title, "%s", (const char*)(ai + 20));
       n++;
       off += (size_t)kp->ki_structsize;
     }
@@ -580,7 +588,7 @@ static int h_status(Conn* c) {
   for (int i = 0; i < np; i++) {
     sb_f(&b, "%s{\"pid\":%d,\"name\":", i ? "," : "", pr[i].pid); sb_str(&b, pr[i].name);
     sb_s(&b, ",\"title\":"); sb_str(&b, pr[i].title);
-    sb_s(&b, "}");
+    sb_f(&b, ",\"stopped\":%s}", pr[i].stopped ? "true" : "false");
     if (pr[i].title[0]) titles = 1;
     if (!strcmp(pr[i].title, OG_TITLE)) running = 1;
   }

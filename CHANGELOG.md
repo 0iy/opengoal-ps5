@@ -13,6 +13,7 @@ Based on OpenGOAL (jak-project `553a713`, v0.3.x). Tested on firmware 13.60 only
 - Experimental: FSR 1.0 upscaling with dynamic resolution, lazy mipmaps ([`docs/FSR.md`](docs/FSR.md))
 - Upstream sync tool (`engine/sync_upstream.py`, `engine/ports/`) and QA pipeline (`tools/qa_pipeline.py`)
 - Frame tracer and analysis tools (`tools/ps5 perf`)
+- Setup `--debug` log with per-request timings (`ps5_setup_debug.log`), detection of a suspended app copy that blocks the launch, test report issue template
 - One command line, `tools/ps5`, for build, deploy, run, measure, QA, import, sync, test and doctor
 - All-in-one offline test suite, `python tests/run_all.py`, with a privacy lint
 

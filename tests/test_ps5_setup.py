@@ -36,7 +36,8 @@ class Base(unittest.TestCase):
         self.c = fake_ps5.FakeConsole()
         # the app: eboot.bin, param.json, 40 assets and one bigger file
         self.app = os.path.join(self.tmp, "app", "LAPY77001")
-        self.local = {"eboot.bin": os.urandom(50000), "sce_sys/param.json": b'{"titleId":"LAPY77001"}', "assets/big.bin": os.urandom(1500000)}
+        self.local = {"eboot.bin": os.urandom(50000), "sce_sys/param.json": b'{"titleId":"LAPY77001"}', "assets/big.bin": os.urandom(1500000),
+                      "sce_module/libc.prx": os.urandom(2000)}
         for i in range(40):
             self.local["assets/d%d/f%d.dat" % (i % 4, i)] = os.urandom(300 + i)
         for rel, data in self.local.items():
@@ -329,6 +330,31 @@ class EndToEnd(Base):
         self.assertEqual(rc, 1, out)  # the fake refuses to launch with OnionHEN present, like the real console
         self.assertIn("OnionHEN is loaded", out)
         self.assertNotIn("kstuff", self.kinds())
+
+    def test_executables_are_uploaded_with_the_execute_bit(self):
+        # a .prx without it makes the loader report a missing module and the app hangs suspended (found on a real console)
+        c = self.c
+        c.kstuff = c.smp = True
+        c.open_loader()
+        c.start_agent("e" * 32)
+        os.makedirs(self.home)
+        open(os.path.join(self.home, "agent.token"), "w").write("e" * 32)
+        rc, out = self.run_setup()
+        self.assertEqual(rc, 0, out)
+        for rel, want in (("eboot.bin", "0755"), ("sce_module/libc.prx", "0755"), ("sce_sys/param.json", "0644"), ("assets/big.bin", "0644")):
+            self.assertEqual(c.modes.get(fake_ps5.APP + "/" + rel), want, rel)
+
+    def test_suspended_app_is_reported_instead_of_waiting(self):
+        c = self.c
+        c.kstuff = c.smp = True
+        c.stuck = True
+        c.open_loader()
+        c.start_agent("c" * 32)
+        os.makedirs(self.home)
+        open(os.path.join(self.home, "agent.token"), "w").write("c" * 32)
+        rc, out = self.run_setup()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("suspended copy", out)
 
     def test_hash_mismatch_is_refused_before_anything_is_sent(self):
         self.payload("smp", pin="0" * 64)

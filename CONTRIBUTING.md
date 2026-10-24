@@ -1,6 +1,11 @@
 # Contributing
 
-Bug reports and patches are welcome. This is a hobby project for one console model and firmware (13.60).
+Bug reports, test reports and patches are welcome. This is an experimental hobby project that has been tested on one console model and firmware (13.60), so reports from other setups are especially useful, including "it worked".
+
+## Test reports
+
+Open a test report (issue template) with your console model, firmware, what you did and what happened. Run `python ps5_setup.py --debug` and attach `ps5_setup_debug.log`
+(tokens are masked; remove your addresses and account names first).
 
 ## Reporting a bug
 

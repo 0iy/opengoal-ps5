@@ -82,6 +82,7 @@ T = {
         "no_app": "App folder not found and the release could not be fetched ({}). Pass --app DIR (the LAPY77001 folder with eboot.bin).",
         "up_fail": "Upload failed: {}", "giveup": "Gave up after {} s waiting for: {}", "launch_fail": "The app did not start. {}",
         "done": "Done. OpenGOAL-PS5 answers at http://{}", "next": "Next: add your games. Open the import window: {}",
+        "stuck": "A suspended copy of the app blocks the start (launch code 0x8094000c). Close the game on the PS5 (home screen, Options, Close Game). If it stays, restart the jailbreak chain, then run this again.",
         "launch_rc": "The console refused the launch (code 0x{:08x}). Is ShadowMountPlus running and has it mounted the app?",
         "ask_import": "Open the game import window now? [y/N] ", "fw": "Firmware {} (only 13.60 is tested)",
         "noagent_done": "Files are on the console. Load ShadowMountPlus and kstuff yourself, then start OpenGOAL-PS5 from the home screen.",
@@ -107,6 +108,7 @@ T = {
         "no_app": "App-Ordner nicht gefunden, Release nicht ladbar ({}). Nutze --app ORDNER (der LAPY77001-Ordner mit eboot.bin).",
         "up_fail": "Upload fehlgeschlagen: {}", "giveup": "Nach {} s aufgegeben beim Warten auf: {}", "launch_fail": "Die App ist nicht gestartet. {}",
         "done": "Fertig. OpenGOAL-PS5 antwortet unter http://{}", "next": "Als Naechstes: Spiele hinzufuegen. Import-Fenster oeffnen: {}",
+        "stuck": "Eine angehaltene Kopie der App blockiert den Start (Code 0x8094000c). Spiel auf der PS5 schliessen (Startbildschirm, Optionen, Spiel beenden). Bleibt sie, Jailbreak neu starten und dies erneut ausfuehren.",
         "launch_rc": "Die Konsole hat den Start abgelehnt (Code 0x{:08x}). Laeuft ShadowMountPlus und hat es die App eingebunden?",
         "ask_import": "Import-Fenster jetzt oeffnen? [j/N] ", "fw": "Firmware {} (nur 13.60 ist getestet)",
         "noagent_done": "Die Dateien liegen auf der Konsole. Lade ShadowMountPlus und kstuff selbst, dann starte OpenGOAL-PS5 im Startbildschirm.",
@@ -139,6 +141,11 @@ def home():
 def system_lang():
     loc = (os.environ.get("LC_ALL") or os.environ.get("LANG") or (locale.getlocale()[0] or "")).lower()
     return "de" if loc.startswith("de") else "en"
+
+
+def file_mode(rel):
+    """eboot.bin and the .prx modules need the execute bit: without it the loader reports a missing .prx and the app hangs suspended."""
+    return "0755" if rel == "eboot.bin" or rel.startswith("sce_module/") else "0644"
 
 
 def sha256_file(path):
@@ -629,6 +636,8 @@ def derive(st):
     st["onion"] = "onion" in procs
     st["smp"] = "shadowmount" in procs or st["open"]["smp_api"]
     st["launched"] = APP_ID.lower() in procs or bool(st["av"] and st["av"]["running"])
+    # a copy of the app that is suspended (never reached main): only the console can clear it
+    st["stuck"] = any(isinstance(p, dict) and p.get("stopped") and (p.get("title") == APP_ID or p.get("name") == "eboot.bin") for p in ((st["agent"] or {}).get("processes") or []))
     st["loader"] = st["open"]["loader"]
     if "kstuff" in procs:
         st["kstuff"] = "yes"
@@ -1046,7 +1055,7 @@ class Setup:
 
     def step_smp(self):
         self.send_elf(self.fetch_payload("smp"), "ShadowMountPlus")
-        if not self.wait_for(lambda s: s["smp"], "ShadowMountPlus in the process list", 30, soft=True):
+        if not self.wait_for(lambda s: s["smp"], "ShadowMountPlus in the process list", 60, soft=True):
             self.ui.say("w_smp", level="warn")
 
     def step_ftpsrv(self):
@@ -1095,7 +1104,7 @@ class Setup:
         todo = []
         for path, rel, size in files:
             m = remote.get(rel)
-            if m and m.get("size") == size and m.get("sha256") == sha256_file(path) and not (rel == "eboot.bin" and a.get("eboot_size") not in (None, size)):
+            if m and m.get("size") == size and m.get("mode") == file_mode(rel) and m.get("sha256") == sha256_file(path) and not (rel == "eboot.bin" and a.get("eboot_size") not in (None, size)):
                 continue
             todo.append((path, rel, size))
         fresh_install = not a.get("installed") or any(r == "eboot.bin" for _, r, _ in todo)
@@ -1144,7 +1153,7 @@ class Setup:
 
         def send(item):
             path, rel, size = item
-            mode = "0755" if rel == "eboot.bin" else "0644"
+            mode = file_mode(rel)
             digest = sha256_file(path)
             for attempt in range(3):
                 src = CountingFile(path, count)
@@ -1159,7 +1168,7 @@ class Setup:
                 finally:
                     src.close()
             with lock:
-                have[rel] = {"size": size, "sha256": digest}
+                have[rel] = {"size": size, "sha256": digest, "mode": mode}
                 prog["files"] += 1
                 if prog["files"] % self.args.flush == 0:
                     flush_manifest()
@@ -1174,7 +1183,7 @@ class Setup:
         for t in last:
             send(t)
         for _, rel, size in files:
-            have.setdefault(rel, {"size": size, "sha256": sha256_file(os.path.join(self.app_dir(), *rel.split("/")))})
+            have.setdefault(rel, {"size": size, "sha256": sha256_file(os.path.join(self.app_dir(), *rel.split("/"))), "mode": file_mode(rel)})
         flush_manifest()
         report(True)
         st = self.mon.fresh()
@@ -1192,6 +1201,8 @@ class Setup:
 
     def step_launch(self):
         ag = self.agent
+        if self.mon.fresh()["stuck"]:
+            raise Fail(self.ui.tr("stuck"))
         for rnd in range(2):
             if not (self.mon.state["launched"] or self.mon.state["app"] is not None):
                 ok, rc = ag.launch()
@@ -1199,10 +1210,12 @@ class Setup:
                     self.ui.emit("msg", level="warn", key="launch_rc", text=self.ui.tr("launch_rc", rc & 0xFFFFFFFF))
                     if rc & 0xFFFFFFFF == 0x80020008:
                         self.ui.say("onion", level="warn")
-            ok = self.wait_for(lambda s: s["app"] is not None, self.ui.tr("w_app"), self.args.launch_timeout * (1 if rnd == 0 else 0.66), soft=True)
+            ok = self.wait_for(lambda s: s["app"] is not None or s["stuck"], self.ui.tr("w_app"), self.args.launch_timeout * (1 if rnd == 0 else 0.66), soft=True)
+            st = self.mon.fresh()
+            if st["stuck"]:
+                raise Fail(self.ui.tr("stuck"))
             if ok:
                 return
-            st = self.mon.fresh()
             if rnd == 0 and "kstuff" not in self.done and not st["onion"] and st["kstuff"] != "yes":
                 if self.consent_kstuff():
                     self.step_kstuff()

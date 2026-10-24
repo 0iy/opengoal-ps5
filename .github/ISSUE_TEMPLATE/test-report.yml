@@ -1,0 +1,36 @@
+name: Test report
+description: You tried OpenGOAL-PS5. Tell what worked and what did not, also when everything worked.
+labels: [testing]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project is experimental and has been tested on one console only. Every report helps, including "it worked".
+        Do not attach game files, ISOs, dumps or keys.
+  - type: input
+    id: console
+    attributes:
+      label: PS5 model and firmware
+      description: For example CFI-2016, 13.60.
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options: [Everything worked, Setup worked but a game has problems, Setup did not finish, The app did not start, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What you did and what happened
+      description: Which games, which step, what you saw on the TV and in the terminal.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Debug log
+      description: "Run the setup with `--debug` and paste the end of `ps5_setup_debug.log`. Tokens are masked; remove addresses and account names."
+      render: text
