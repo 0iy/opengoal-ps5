@@ -46,10 +46,17 @@ Without Python (Windows): `.\Install-OpenGOAL.ps1 -Ps5 <your PS5 address>`.
 
 **Fast, from the PC (recommended).** The PC unpacks, analyses and builds the game and sends the result; the app must be running on the console. Paste one line:
 
-| System | Paste into | One-liner |
-|---|---|---|
-| Windows | PowerShell | `irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 \| iex` |
-| macOS, Linux | Terminal | `curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh \| bash` |
+**Windows** (PowerShell):
+
+```powershell
+irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 | iex
+```
+
+**macOS and Linux** (Terminal):
+
+```bash
+curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
+```
 
 A window opens: choose or drop your `.iso` files (Jak 1, 2 and 3 are recognised by the disc serial), the PS5 is found automatically (or type its address and press
 **Test connection**), press **Start**. You see phase, percent, speed and time left per game; the end message is "Ready: start the game on your PS5". German or English

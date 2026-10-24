@@ -26,9 +26,16 @@ und deine Spiele als unveraenderte `.iso`-Abbilder.
 2. `install.bat` (Windows) oder `sh install.sh --lang de` (Linux, macOS) starten, PS5-Adresse eingeben oder Enter fuer die Suche.
 3. **OpenGOAL-PS5** auf der Konsole starten und die Spiele hinzufuegen. Am schnellsten vom PC:
 
+**Windows** (PowerShell):
+
+```powershell
+irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 | iex
 ```
-irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 | iex                  # Windows, PowerShell
-curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash           # macOS, Linux
+
+**macOS und Linux** (Terminal):
+
+```bash
+curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
 ```
 
 Oder die in der App angezeigte Adresse (QR-Code) am Handy oder PC oeffnen und die `.iso`-Dateien dort senden (langsamer). Mehr: [`docs/INSTALL.md`](docs/INSTALL.md) (Abschnitt Deutsch).

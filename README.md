@@ -26,9 +26,16 @@ with Python 3.
 2. Run `install.bat` (Windows) or `sh install.sh` (Linux, macOS), enter the PS5 address or press Enter to search.
 3. Start OpenGOAL-PS5 on the console and add your games. Fast, from the PC:
 
+**Windows** (PowerShell):
+
+```powershell
+irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 | iex
 ```
-irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 | iex                  # Windows, PowerShell
-curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash           # macOS, Linux
+
+**macOS and Linux** (Terminal):
+
+```bash
+curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
 ```
 
 Or open the address and QR code the app shows on a phone or PC and upload the `.iso` files there (slower). Details: [`docs/INSTALL.md`](docs/INSTALL.md).
