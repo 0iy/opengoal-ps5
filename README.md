@@ -84,13 +84,14 @@ Known issues: visual glitches in places, occasional frame-time spikes, 4K output
 ## How it fits together
 
 ```mermaid
-flowchart LR
-  PC["PC<br/>installer/pc_import.py<br/>extract, decompile, pack"] -- "finished game, one stream" --> WEB
+flowchart TB
+  PC["<b>PC</b><br/>installer/pc_import.py<br/>extract, decompile, pack"] -->|"finished game, one stream"| WEB
   subgraph PS5["PS5: one app, OpenGOAL-PS5"]
-    WEB["web server :8080<br/>unpacks while receiving"] --> LAUNCH["launcher<br/>controller UI, settings"]
-    LAUNCH --> ENGINE["OpenGOAL engine<br/>patched jak-project"]
-    ENGINE --> SHIM["shim<br/>SDL replacement, GL fixes"]
-    SHIM --> DRV["driver<br/>Mesa to AGC, patched"]
+    direction TB
+    WEB["<b>web server</b> :8080<br/>unpacks while receiving"] --> LAUNCH["<b>launcher</b><br/>controller UI, settings"]
+    LAUNCH --> ENGINE["<b>OpenGOAL engine</b><br/>patched jak-project"]
+    ENGINE --> SHIM["<b>shim</b><br/>SDL replacement, GL fixes"]
+    SHIM --> DRV["<b>driver</b><br/>Mesa to AGC, patched"]
   end
   DRV --> TV(["TV, 60 fps"])
 ```
