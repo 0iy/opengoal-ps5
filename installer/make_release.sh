@@ -13,6 +13,8 @@ chmod +x "$out/install.sh"
 # one-liner GUI: gui/, pc_import.py and the bootstrap scripts travel inside the bundle too
 cp -r "$here/gui" "$out/gui"; rm -rf "$out/gui/__pycache__"; cp "$here/bootstrap.ps1" "$here/bootstrap.sh" "$out/"
 cp "$here/pc_import.py" "$out/"
+# toolchain pack (see docs/PC_IMPORT.md, `pc_import.py --make-pack`): travels in the bundle and as its own release asset
+[ -f "$here/opengoal-ps5-pack.tgz" ] && cp "$here/opengoal-ps5-pack.tgz" "$out/" || { echo "missing installer/opengoal-ps5-pack.tgz"; exit 1; }
 # licences travel with the binaries (GPL, OFL font notice, third-party notices)
 cp "$root/LICENSE" "$root/THIRD_PARTY_NOTICES.md" "$out/"; cp -r "$root/LICENSES" "$out/LICENSES"
 (cd "$out" && find . -type f ! -name SHA256SUMS | sed 's|^\./||' | sort | xargs sha256sum > SHA256SUMS)
@@ -21,3 +23,6 @@ python3 -c "import shutil,sys; shutil.make_archive(sys.argv[1], 'zip', sys.argv[
 # release assets for the one-liners: OpenGOAL-PS5-gui.zip, bootstrap.ps1/.sh and the release-level SHA256SUMS
 python3 "$here/gui/make_gui_zip.py" "$root/release"
 ls -la "$root/release/OpenGOAL-PS5.zip"
+
+cp "$out/opengoal-ps5-pack.tgz" "$root/release/"
+(cd "$root/release" && sha256sum OpenGOAL-PS5.zip OpenGOAL-PS5-gui.zip opengoal-ps5-pack.tgz bootstrap.ps1 bootstrap.sh > SHA256SUMS 2>/dev/null; ls -la)

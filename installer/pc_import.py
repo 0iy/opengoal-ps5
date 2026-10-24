@@ -18,6 +18,11 @@ FRAME = 4 << 20            # raw bytes per frame
 C_RAW, C_DEFLATE, C_END = 0, 1, 255
 RELEASE = "v0.3.6"         # == engine/ports/upstream.lock commit 553a713 (verified: git tag v0.3.6 is that commit)
 BASE = "https://github.com/open-goal/jak-project/releases/download/" + RELEASE + "/"
+# our toolchain pack (patched goal_src, game assets with the PS5 menu texts, precompiled game code): a release asset, pinned by hash
+PACK_NAME = "opengoal-ps5-pack.tgz"
+PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.1.0/" + PACK_NAME
+PACK_SIZE = 22161741
+PACK_SHA256 = "15a18a26157745bc7adf7f2c9f8b6ee476ddbc3016d629858f5a7cfab7048bcc"
 TOOLS = {  # sizes/sha256 from the GitHub release API digests
     "windows": ("opengoal-windows-v0.3.6.zip", 42097216, "98aa727f10414faa0d60c233827f472d057150f56baf85506858592d39656cb0"),
     "linux": ("opengoal-linux-v0.3.6.tar.gz", 43037303, "580005f837ecb151c26bb42af5281150721eae45e92206cbab5fb13dbd83e6e4"),
@@ -186,6 +191,33 @@ def ensure_tools(cache, tools_dir, rep):
             os.chmod(p, 0o755)
     open(os.path.join(dest, ".verified"), "w").write(want)
     return dest
+
+
+def ensure_pack(cache, pack, rep):
+    """--pack wins; else the pack file next to this script (release bundle); else the pinned release asset, sha256-verified."""
+    if pack:
+        return pack
+    near = os.path.join(os.path.dirname(os.path.abspath(__file__)), PACK_NAME)
+    if os.path.isfile(near) and sha256_file(near) == PACK_SHA256:
+        return near
+    arc = os.path.join(cache, "dl", PACK_NAME)
+    if not (os.path.isfile(arc) and os.path.getsize(arc) == PACK_SIZE and sha256_file(arc) == PACK_SHA256):
+        os.makedirs(os.path.join(cache, "dl"), exist_ok=True)
+        rep.emit("tools", 0, "downloading %s (%d MB)" % (PACK_NAME, PACK_SIZE >> 20), force=True)
+        h, got = hashlib.sha256(), 0
+        try:
+            with urllib.request.urlopen(PACK_URL, timeout=30) as r, open(arc + ".part", "wb") as o:
+                for b in iter(lambda: r.read(1 << 20), b""):
+                    o.write(b)
+                    h.update(b)
+                    got += len(b)
+        except OSError as e:
+            raise Fail("tools", "download of the toolchain pack failed: %s" % e)
+        if h.hexdigest() != PACK_SHA256 or got != PACK_SIZE:
+            os.remove(arc + ".part")
+            raise Fail("tools", "sha256/size mismatch for %s (got %s)" % (PACK_NAME, h.hexdigest()))
+        os.replace(arc + ".part", arc)
+    return arc
 
 
 def ensure_project(cache, tools, pack, proj_dir, rep):
@@ -786,7 +818,7 @@ def main(argv=None):
         if not dry:
             check_console(a.ps5, a.port)
         tools = ensure_tools(a.cache_dir, a.tools_dir, rep)
-        proj, pack = ensure_project(a.cache_dir, tools, a.pack, a.proj_dir, rep)
+        proj, pack = ensure_project(a.cache_dir, tools, ensure_pack(a.cache_dir, a.pack, rep) if not a.proj_dir else None, a.proj_dir, rep)
         for d in ("iso_data", "decompiler_out", "out"):
             shutil.rmtree(os.path.join(proj, d), ignore_errors=True)
         t_x = time.time()

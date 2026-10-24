@@ -115,3 +115,12 @@ Third-party checkouts are git-ignored. Do not commit game data, firmware, keys o
 | `ONE_LINERS.md` | `docs/INSTALL.md` |
 | `QA_PIPELINE.md`, `FSR_EFFECTS_AUDIT.md` | `docs/QA.md`, `docs/FSR.md` |
 | removed one-shot scripts (`shim_patch_*.py`, `patch_launcher_*.py`, `patch_fsr_v1.py`, `gen_import_probe.py`, `analyze*`, `flows.py`, `startwatch.py`, `spikes_*.py`, `arl.py`, `ps5dbg*.py`, `jak3_play.py`, `conv_assets.py`, ...) | git history |
+
+## Release
+
+1. `python tools/ps5.py build`, then `python tests/run_all.py` (must be green).
+2. Rebuild the toolchain pack when `engine/` patches or game assets changed: `python installer/pc_import.py --make-pack installer/opengoal-ps5-pack.tgz ...`
+   and put its size and sha256 into `PACK_SIZE` / `PACK_SHA256` in `installer/pc_import.py`.
+3. `bash installer/make_release.sh` (WSL) writes `release/`: `OpenGOAL-PS5.zip`, `OpenGOAL-PS5-gui.zip`, `opengoal-ps5-pack.tgz`, `bootstrap.ps1`, `bootstrap.sh`, `SHA256SUMS`.
+4. `gh release create vX.Y.Z release/OpenGOAL-PS5.zip release/OpenGOAL-PS5-gui.zip release/opengoal-ps5-pack.tgz release/bootstrap.ps1 release/bootstrap.sh release/SHA256SUMS`
+   (the tag in `PACK_URL` must match).
