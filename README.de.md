@@ -43,6 +43,8 @@ Controller-Launcher, schnellem Spielimport vom PC und einem angepassten OpenGL-z
 <img src="docs/img/jak2.png" width="49%" alt="Jak II"> <img src="docs/img/jak3.png" width="49%" alt="Jak 3">
 </p>
 
+<p align="center"><img src="docs/img/launcher-tour.gif" width="70%" alt="Launcher tour"><br><sub>Launcher-Rundgang, von einer Konsole aufgenommen: Spiele wechseln, Einstellungen und Steuerung.</sub></p>
+
 <sub>Der Screenshot der Import-Seite zeigt simulierte Werte (es lief kein Import); die anderen stammen von einer Konsole.</sub>
 
 ## Start

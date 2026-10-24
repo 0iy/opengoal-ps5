@@ -43,6 +43,8 @@ controller launcher, fast game import from your PC and a patched OpenGL-to-AGC g
 <img src="docs/img/jak2.png" width="49%" alt="Jak II"> <img src="docs/img/jak3.png" width="49%" alt="Jak 3">
 </p>
 
+<p align="center"><img src="docs/img/launcher-tour.gif" width="70%" alt="Launcher tour"><br><sub>Launcher tour, recorded from a console: switch games, open the settings and the controls page.</sub></p>
+
 <sub>The import screenshot shows simulated values (no import was running); the others are from a console.</sub>
 
 ## Start

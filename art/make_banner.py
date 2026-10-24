@@ -47,3 +47,28 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def social():
+    """1280x640 social preview (GitHub repository settings, Social preview): banner art scaled up with the title larger."""
+    w, h = 1280, 640
+    src = Image.open(os.path.join(ROOT, "docs", "img", "banner.png")).convert("RGB")
+    bg = src.resize((int(src.width * h / src.height), h)).crop(((int(src.width * h / src.height) - w) // 2, 0, (int(src.width * h / src.height) + w) // 2, h))
+    bg = ImageEnhance.Brightness(bg).enhance(0.6)
+    d = ImageDraw.Draw(bg)
+    big = ImageFont.truetype(FONT, 150)
+    mid = ImageFont.truetype(FONT, 48)
+    for dx, dy, col in ((5, 6, (0, 0, 0)), (0, 0, (255, 255, 255))):
+        d.text(((w - d.textlength("OpenGOAL-PS5", font=big)) / 2 + dx, 150 + dy), "OpenGOAL-PS5", font=big, fill=col)
+    line = "Jak and Daxter 1, 2, 3 on PlayStation 5"
+    d.text(((w - d.textlength(line, font=mid)) / 2, 340), line, font=mid, fill=(255, 205, 140))
+    sm = ImageFont.truetype(FONT, 36)
+    line2 = "Native. 60 fps. Playable in a minute."
+    d.text(((w - d.textlength(line2, font=sm)) / 2, 420), line2, font=sm, fill=(235, 235, 245))
+    out = os.path.join(ROOT, "docs", "img", "social-preview.png")
+    bg.save(out, optimize=True)
+    print(out, os.path.getsize(out) >> 10, "KB")
+
+
+if __name__ == "__main__":
+    social()
