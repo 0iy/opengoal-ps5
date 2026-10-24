@@ -97,7 +97,7 @@ def linux_shell():
 # ----------------------------------------------------------------------------------------------- static checks
 @check("repository layout")
 def t_layout():
-    allowed = {"README.md", "README.de.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md", "LICENSES", ".gitignore",
+    allowed = {"README.md", "README.de.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md", "LICENSES", ".gitignore", ".github",
                "app", "driver", "engine", "payloads", "tools", "installer", "tests", "art", "docs"}
     extra = sorted({f.split("/")[0] for f in files()} - allowed)
     assert not extra, "unexpected entries in the repository root: " + ", ".join(extra)

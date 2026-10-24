@@ -1,0 +1,36 @@
+name: Bug report
+description: Something in the app, the launcher, the import or the tools does not work.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, what did you get? A photo or screenshot helps.
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Where
+      options: [Launcher, Game import (PC window), Game import (web page), Installer, In-game menu, Graphics glitch, Tools or tests, Other]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Release version
+      description: For example v0.1.0.
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: PS5 model and firmware
+      description: For example CFI-2016, 13.60.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: "The last lines of /data/opengoal/log/ps5.log (read it over FTP) or the output of the tool. Remove anything private."
+      render: text

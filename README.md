@@ -1,19 +1,49 @@
-# OpenGOAL-PS5
+<p align="center">
+  <img src="docs/img/banner.png" alt="OpenGOAL-PS5: Jak and Daxter 1, 2 and 3 on PlayStation 5" width="100%">
+</p>
 
-Play Jak and Daxter 1, 2 and 3 natively on a jailbroken PlayStation 5. A port of the [OpenGOAL](https://github.com/open-goal/jak-project) engine with a
-controller launcher, on-console game import and a patched OpenGL-to-AGC graphics driver. No emulation.
+<p align="center">
+  <a href="https://github.com/0iy/opengoal-ps5/actions/workflows/tests.yml"><img src="https://github.com/0iy/opengoal-ps5/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
+  <img src="https://img.shields.io/badge/release-v0.1.0-f97316" alt="release v0.1.0">
+  <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0">
+  <img src="https://img.shields.io/badge/PS5%20firmware-13.60-1f6feb" alt="firmware 13.60">
+  <img src="https://img.shields.io/badge/Jak%203-60%20fps-2da44e" alt="Jak 3 at 60 fps">
+</p>
 
-[Deutsch](README.de.md) | [Install](docs/INSTALL.md) | [User guide](docs/USER_GUIDE.md) | [Docs](docs/README.md)
+<p align="center">
+  <a href="#start">Start</a> ·
+  <a href="#status">Status</a> ·
+  <a href="docs/INSTALL.md">Install</a> ·
+  <a href="docs/USER_GUIDE.md">User guide</a> ·
+  <a href="docs/README.md">Docs</a> ·
+  <a href="README.de.md">Deutsch</a>
+</p>
 
-No game files are included. You need your own legally owned discs, imported from `.iso` images. This project does not support piracy.
+Play **Jak and Daxter** 1, 2 and 3 natively on a jailbroken PlayStation 5. A port of the [OpenGOAL](https://github.com/open-goal/jak-project) engine with a
+controller launcher, fast game import from your PC and a patched OpenGL-to-AGC graphics driver. No emulation.
+
+> **No game files are included.** You need your own legally owned discs, imported from `.iso` images. This project does not support piracy.
+
+<table>
+<tr>
+<td width="33%" valign="top"><b>60 fps</b><br>Jak 3 sits at vsync. Jak 2 reaches 50 to 58 in the city, up from 32.</td>
+<td width="33%" valign="top"><b>Playable in about a minute</b><br>The PC does the heavy work and sends the finished game. Jak 1: 63 s measured.</td>
+<td width="33%" valign="top"><b>Made for a controller</b><br>Launcher, settings and game import all work from the couch, English and German.</td>
+</tr>
+<tr>
+<td width="33%" valign="top"><b>FSR 1.0 and dynamic resolution</b><br>Render below output size and upscale. Experimental.</td>
+<td width="33%" valign="top"><b>Follows OpenGOAL</b><br>An upstream sync tool re-applies every patch and tells you what broke.</td>
+<td width="33%" valign="top"><b>Tested</b><br>One command runs 18 offline checks. A QA pipeline compares fps and screenshots.</td>
+</tr>
+</table>
 
 <p align="center">
 <img src="docs/img/launcher.png" width="49%" alt="Launcher"> <img src="docs/img/settings.png" width="49%" alt="Settings">
-<img src="docs/img/onboarding.png" width="49%" alt="Onboarding page"> <img src="docs/img/jak1.png" width="49%" alt="Jak and Daxter">
+<img src="docs/img/onboarding.png" width="49%" alt="Game import"> <img src="docs/img/jak1.png" width="49%" alt="Jak and Daxter">
 <img src="docs/img/jak2.png" width="49%" alt="Jak II"> <img src="docs/img/jak3.png" width="49%" alt="Jak 3">
 </p>
 
-The onboarding screenshot shows simulated values (no import was running); the others are from a console.
+<sub>The import screenshot shows simulated values (no import was running); the others are from a console.</sub>
 
 ## Start
 
@@ -38,28 +68,44 @@ curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstra
 
 A game is playable about a minute after you start (measured for Jak 1 on a LAN). Or open the address and QR code the app shows on a phone or PC and upload the `.iso` files there (slower). Details: [`docs/INSTALL.md`](docs/INSTALL.md).
 
-## Status (v0.1.0, early release)
+## Status
 
-Measured at 1080p, vsync 60 Hz, draw merging and async GPU submit on ([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)).
+v0.1.0, early release. Measured at 1080p, vsync 60 Hz, draw merging and async GPU submit on ([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)).
 
 | Game | State | Frame rate |
 |---|---|---|
-| Jak and Daxter: The Precursor Legacy | playable | 58 to 60 fps (title and intro, PAL disc imported from the PC) |
-| Jak II | playable, some visual glitches | about 50 to 58 fps in the city (32 fps without merging and async submit) |
-| Jak 3 | playable, some visual glitches | 59 to 60 fps in gameplay (43 fps without), about 3 frames per 3 s over 20 ms |
+| Jak and Daxter: The Precursor Legacy | 🟢 playable | 58 to 60 fps (title and intro, PAL disc imported from the PC) |
+| Jak II | 🟡 playable, some visual glitches | about 50 to 58 fps in the city (32 fps without merging and async submit) |
+| Jak 3 | 🟡 playable, some visual glitches | 59 to 60 fps in gameplay (43 fps without), about 3 frames per 3 s over 20 ms |
 
 Known issues: visual glitches in places, occasional frame-time spikes, 4K output is much slower than 1080p on the GPU side. FSR upscaling and dynamic resolution are experimental
 ([`docs/FSR.md`](docs/FSR.md)). Only firmware 13.60 is tested.
 
+## How it fits together
+
+```mermaid
+flowchart LR
+  PC["PC<br/>installer/pc_import.py<br/>extract, decompile, pack"] -- "finished game, one stream" --> WEB
+  subgraph PS5["PS5: one app, OpenGOAL-PS5"]
+    WEB["web server :8080<br/>unpacks while receiving"] --> LAUNCH["launcher<br/>controller UI, settings"]
+    LAUNCH --> ENGINE["OpenGOAL engine<br/>patched jak-project"]
+    ENGINE --> SHIM["shim<br/>SDL replacement, GL fixes"]
+    SHIM --> DRV["driver<br/>Mesa to AGC, patched"]
+  end
+  DRV --> TV(["TV, 60 fps"])
+```
+
 ## Features
 
 - Controller launcher for Jak 1, 2 and 3, English and German
-- Game import on the console (web page on port 8080: checks the image, converts and compiles on the PS5) or from the PC (faster)
+- Game import from the PC (fast) or on the console (web page on port 8080)
 - Draw merging and asynchronous GPU submit: about +10 fps in Jak 2, Jak 3 reaches vsync
+- In-game option menus lock what makes no sense on a console (display mode, window size, vsync, frame limit)
 - Experimental: FSR 1.0 upscaling with dynamic resolution, lazy mipmaps
 - Upstream sync tool and a QA pipeline to follow new OpenGOAL versions ([`docs/UPSTREAM_SYNC.md`](docs/UPSTREAM_SYNC.md), [`docs/QA.md`](docs/QA.md))
 
-## FAQ
+<details>
+<summary><b>FAQ</b></summary>
 
 - **Which firmware works?** 13.60. Others are unknown.
 - **Can I use my disc directly?** No. Make an `.iso` image of your own disc first; `.bin/.cue` must be converted.
@@ -67,7 +113,10 @@ Known issues: visual glitches in places, occasional frame-time spikes, 4K output
 - **Why must kstuff be loaded before OnionHEN?** With OnionHEN's built-in kstuff the app is refused (error `0x80020008`). Load OnionHEN only after the app is running.
 - **Can I get 60 fps everywhere?** Jak 3 is at the limit; Jak 2 in the city is about 50 to 58. The remaining cost is CPU time per draw in the driver.
 
-## Troubleshooting
+</details>
+
+<details>
+<summary><b>Troubleshooting</b></summary>
 
 | Symptom | Try |
 |---|---|
@@ -79,7 +128,10 @@ Known issues: visual glitches in places, occasional frame-time spikes, 4K output
 
 More: [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md).
 
-## Repository
+</details>
+
+<details>
+<summary><b>Repository layout</b></summary>
 
 | Folder | Content |
 |---|---|
@@ -93,6 +145,8 @@ More: [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md).
 | `art/`, `docs/` | artwork, documentation |
 
 Build and contribute: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md), [`CONTRIBUTING.md`](CONTRIBUTING.md). Security issues: [`SECURITY.md`](SECURITY.md).
+
+</details>
 
 ## Legal
 

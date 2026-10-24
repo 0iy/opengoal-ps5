@@ -1,0 +1,35 @@
+name: A game does not run
+description: A game crashes, shows a black screen, or is far below 60 fps.
+labels: [game]
+body:
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options: [Jak and Daxter, Jak II, Jak 3]
+    validations:
+      required: true
+  - type: input
+    id: disc
+    attributes:
+      label: Disc region and serial
+      description: For example PAL, SCES-50361.
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How was it imported
+      options: [PC window or one-liner, Web page on the console, Not sure]
+  - type: textarea
+    id: where
+    attributes:
+      label: Where and what you see
+      description: Level or screen, fps if you know it, whether it happens every time.
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Launcher settings
+      description: Resolution, draw merging, async submit, lazy mipmaps, upscaling.
