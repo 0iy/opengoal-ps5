@@ -30,6 +30,8 @@ Remove-Item $tmp -Recurse -Force
 if ($env:OGPS5_NORUN) { Write-Host "Unpacked to $app (OGPS5_NORUN set)."; return }
 if (-not $env:OGPS5_SKIP_SETUP) {
     $py = $null
+    $portable = Join-Path $Dir 'python\python.exe'  # the import window's own portable Python, if an earlier run fetched it
+    if (Test-Path $portable) { $py = $portable }
     foreach ($n in 'python', 'python3', 'py') {
         $c = Get-Command $n -ErrorAction SilentlyContinue | Select-Object -First 1
         # the Microsoft Store stub is found by name but cannot run: require a real Python 3.7+
@@ -39,7 +41,7 @@ if (-not $env:OGPS5_SKIP_SETUP) {
         & $py (Join-Path $app 'ps5_setup.py')
         if ($LASTEXITCODE -ne 0) { Write-Host "The console setup did not finish. Run it again: $py $app\ps5_setup.py" -ForegroundColor Yellow; return }
     } else {
-        Write-Host "Python 3 not found: skipping the console setup. Install Python 3, then run: python $app\ps5_setup.py" -ForegroundColor Yellow
+        Write-Host 'Python 3 not found: the console setup is skipped for now. The import window offers to fetch a Python; afterwards run this line again, or install it yourself: winget install Python.Python.3.12 --scope user' -ForegroundColor Yellow
     }
 }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File (Join-Path $app 'gui\windows\OpenGOAL-PS5.ps1')

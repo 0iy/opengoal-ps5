@@ -53,6 +53,43 @@ Controller-Launcher, schnellem Spielimport vom PC und einem angepassten OpenGL-z
 
 <sub>Der Screenshot der Import-Seite zeigt simulierte Werte (es lief kein Import); die anderen stammen von einer Konsole.</sub>
 
+## Start
+
+**Du brauchst:** eine PS5 mit Firmware 13.60 (einzige getestete Version) und einem Jailbreak, der den ELF-Loader auf Port 9021 startet, einen PC im selben Netz (Windows, macOS oder Linux)
+mit Python 3 (Windows: der Einzeiler sagt dir, wenn es fehlt) und deine Spiele als unveraenderte `.iso`-Abbilder.
+
+1. **Jailbreak auf der PS5 starten**, bis der ELF-Loader lauscht (Port 9021). OnionHEN nicht vor dem Start der App laden.
+2. **Eine Zeile am PC einfuegen.** Sie findet die PS5, laedt was fehlt (ShadowMountPlus, kstuff-lite nach Rueckfrage), installiert und startet die App und oeffnet dann das Import-Fenster.
+   `.iso`-Dateien hineinziehen. Etwa eine Minute spaeter ist das Spiel spielbar (Jak 1 gemessen: 63 s).
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 | iex
+```
+
+**macOS und Linux** (Terminal):
+
+```bash
+curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
+```
+
+Jederzeit wiederholbar: es erledigt nur, was noch fehlt. Es startet die Konsole nie neu, schreibt keine Kernel-Flags und enthaelt kstuff-lite nicht (kommt vom Release des Autors, nur mit deiner Zustimmung).
+Lieber erst lesen? `OpenGOAL-PS5.zip` vom [neuesten Release](https://github.com/0iy/opengoal-ps5/releases/latest) laden, entpacken, `python ps5_setup.py` starten
+(`--debug` schreibt ein Log fuer Fehlerberichte). Oder per Handy: Adresse und QR-Code der App oeffnen und die `.iso`-Dateien dort senden (langsamer). Mehr: [`docs/INSTALL.md`](docs/INSTALL.md) (Abschnitt Deutsch).
+
+## Stand
+
+v0.1.0, frueher Release. Gemessen bei 1080p, vsync 60 Hz, mit Draw-Zusammenfassung und asynchronem GPU-Senden ([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)).
+
+| Spiel | Zustand | Bildrate |
+|---|---|---|
+| Jak 1 | 🟢 spielbar | 58 bis 60 fps (Titel und Intro, PAL-Disc vom PC importiert) |
+| Jak 2 | 🟡 spielbar, einzelne Grafikfehler | etwa 50 bis 58 fps in der Stadt (32 fps ohne) |
+| Jak 3 | 🟡 spielbar, einzelne Grafikfehler | 59 bis 60 fps im Spiel (43 fps ohne) |
+
+Bekannt: das Ein-Befehl-Setup ist neu und nur auf einer Konsole geprueft; einzelne Grafikfehler, gelegentliche Ruckler. FSR-Hochskalierung ist experimentell ([`docs/FSR.md`](docs/FSR.md)).
+
 ## Warum dieser Port
 
 OpenGOAL-PS5 fuehrt die Spiele als native PS5-Programme aus. Es gibt keinen Emulator dazwischen und nichts, was pro Spiel konvertiert oder signiert werden muss.
@@ -68,42 +105,6 @@ OpenGOAL-PS5 fuehrt die Spiele als native PS5-Programme aus. Es gibt keinen Emul
 | Voraussetzung | gejailbreakte PS5 mit 13.60, eigene Discs | Paket-Werkzeug oder Store-App, eigene Discs |
 
 Die rechte Spalte beschreibt den ueblichen PKG-Weg allgemein, kein bestimmtes Werkzeug: nur die linke Spalte hat dieses Projekt gemessen.
-
-## Start
-
-Du brauchst eine PS5 mit Firmware 13.60 (einzige getestete Version), auf der der ELF-Loader (Port 9021) laeuft, einen PC im selben Netz mit Python 3
-und deine Spiele als unveraenderte `.iso`-Abbilder.
-
-1. Konsole einrichten: `OpenGOAL-PS5.zip` vom [neuesten Release](https://github.com/0iy/opengoal-ps5/releases/latest) laden, entpacken und `python ps5_setup.py` starten
-   (mit `--with-kstuff` darf es kstuff-lite laden). Es findet die PS5, laedt was fehlt (kstuff-lite, ShadowMountPlus), installiert die App und startet sie. Jederzeit
-   erneut ausfuehrbar; es erledigt nur, was noch fehlt. Die Zeile in Schritt 2 startet es ebenfalls zuerst.
-2. Spiele vom PC hinzufuegen: eine Zeile einfuegen, ein kleines Fenster oeffnet sich, `.iso`-Dateien hineinziehen:
-
-**Windows** (PowerShell):
-
-```powershell
-irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 | iex
-```
-
-**macOS und Linux** (Terminal):
-
-```bash
-curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
-```
-
-Oder die in der App angezeigte Adresse (QR-Code) am Handy oder PC oeffnen und die `.iso`-Dateien dort senden (langsamer). Mehr: [`docs/INSTALL.md`](docs/INSTALL.md) (Abschnitt Deutsch).
-
-## Stand
-
-v0.1.0, frueher Release. Gemessen bei 1080p, vsync 60 Hz, mit Draw-Zusammenfassung und asynchronem GPU-Senden ([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)).
-
-| Spiel | Zustand | Bildrate |
-|---|---|---|
-| Jak 1 | 🟢 spielbar | 58 bis 60 fps (Titel und Intro, PAL-Disc vom PC importiert) |
-| Jak 2 | 🟡 spielbar, einzelne Grafikfehler | etwa 50 bis 58 fps in der Stadt (32 fps ohne) |
-| Jak 3 | 🟡 spielbar, einzelne Grafikfehler | 59 bis 60 fps im Spiel (43 fps ohne) |
-
-Bekannt: das Ein-Befehl-Setup ist neu und nur auf einer Konsole geprueft; einzelne Grafikfehler, gelegentliche Ruckler. FSR-Hochskalierung ist experimentell ([`docs/FSR.md`](docs/FSR.md)).
 
 ## Mithelfen
 

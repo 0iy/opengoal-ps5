@@ -53,6 +53,44 @@ controller launcher, fast game import from your PC and a patched OpenGL-to-AGC g
 
 <sub>The import screenshot shows simulated values (no import was running); the others are from a console.</sub>
 
+## Start
+
+**You need:** a PS5 on firmware 13.60 (the only version tested) with a jailbreak that runs the ELF loader on port 9021, a PC on the same network (Windows, macOS or Linux)
+with Python 3 (Windows: the one-liner tells you if it is missing), and your own games as unmodified `.iso` images.
+
+1. **Start the jailbreak on the PS5** until the ELF loader listens (port 9021). Do not load OnionHEN before the app runs.
+2. **Paste one line on the PC.** It finds the PS5, loads what is missing (ShadowMountPlus, kstuff-lite after asking you), installs and starts the app, then opens the import window.
+   Drop your `.iso` files in it. About a minute later the game is playable (Jak 1 measured: 63 s).
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 | iex
+```
+
+**macOS and Linux** (Terminal):
+
+```bash
+curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
+```
+
+Safe to run again at any time: it only does what is still needed. It never restarts the console, never writes kernel flags and never bundles kstuff-lite (fetched from its author's release, only with your consent).
+Prefer to read first? Download `OpenGOAL-PS5.zip` from the [latest release](https://github.com/0iy/opengoal-ps5/releases/latest), unzip it and run `python ps5_setup.py`
+(`--debug` writes a log for bug reports). Or use the phone route: open the address and QR code the app shows and upload the `.iso` files there (slower). Details: [`docs/INSTALL.md`](docs/INSTALL.md).
+
+## Status
+
+v0.1.0, early release. Measured at 1080p, vsync 60 Hz, draw merging and async GPU submit on ([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)).
+
+| Game | State | Frame rate |
+|---|---|---|
+| Jak and Daxter: The Precursor Legacy | 🟢 playable | 58 to 60 fps (title and intro, PAL disc imported from the PC) |
+| Jak II | 🟡 playable, some visual glitches | about 50 to 58 fps in the city (32 fps without merging and async submit) |
+| Jak 3 | 🟡 playable, some visual glitches | 59 to 60 fps in gameplay (43 fps without), about 3 frames per 3 s over 20 ms |
+
+Known issues: the one-command setup is new and only verified on one console; visual glitches in places, occasional frame-time spikes, 4K output is much slower than 1080p on the GPU side. FSR upscaling and dynamic resolution are experimental
+([`docs/FSR.md`](docs/FSR.md)). Only firmware 13.60 is tested.
+
 ## Why this port
 
 OpenGOAL-PS5 runs the games as native PS5 programs. There is no emulator in between and nothing to convert or sign per game.
@@ -68,42 +106,6 @@ OpenGOAL-PS5 runs the games as native PS5 programs. There is no emulator in betw
 | Needs | jailbroken PS5 on 13.60, your own discs | a package tool or store app, your own discs |
 
 The right column is about the usual PKG route in general, not one specific tool: only the left column is measured by this project.
-
-## Start
-
-You need a PS5 on firmware 13.60 (the only version tested) with the ELF loader (port 9021) running, and a PC on the same network with Python 3.
-
-1. Set up the console: download `OpenGOAL-PS5.zip` from the [latest release](https://github.com/0iy/opengoal-ps5/releases/latest), unzip it and run `python ps5_setup.py`
-   (add `--with-kstuff` to let it load kstuff-lite). It finds the PS5, loads what is missing (kstuff-lite, ShadowMountPlus), installs the app and starts it. Run it again at
-   any time; it only does what is still needed. The one-liner in step 2 runs it first, too.
-2. Add your games from the PC. Paste one line, a small window opens, drop your `.iso` files in it:
-
-**Windows** (PowerShell):
-
-```powershell
-irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 | iex
-```
-
-**macOS and Linux** (Terminal):
-
-```bash
-curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
-```
-
-A game is playable about a minute after you start (measured for Jak 1 on a LAN). Or open the address and QR code the app shows on a phone or PC and upload the `.iso` files there (slower). Details: [`docs/INSTALL.md`](docs/INSTALL.md).
-
-## Status
-
-v0.1.0, early release. Measured at 1080p, vsync 60 Hz, draw merging and async GPU submit on ([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)).
-
-| Game | State | Frame rate |
-|---|---|---|
-| Jak and Daxter: The Precursor Legacy | 🟢 playable | 58 to 60 fps (title and intro, PAL disc imported from the PC) |
-| Jak II | 🟡 playable, some visual glitches | about 50 to 58 fps in the city (32 fps without merging and async submit) |
-| Jak 3 | 🟡 playable, some visual glitches | 59 to 60 fps in gameplay (43 fps without), about 3 frames per 3 s over 20 ms |
-
-Known issues: the one-command setup is new and only verified on one console; visual glitches in places, occasional frame-time spikes, 4K output is much slower than 1080p on the GPU side. FSR upscaling and dynamic resolution are experimental
-([`docs/FSR.md`](docs/FSR.md)). Only firmware 13.60 is tested.
 
 ## Help test
 
