@@ -232,6 +232,13 @@ def t_gui():
     return tail(p, 1)
 
 
+@check("ps5_setup end to end (fake console)")
+def t_ps5_setup():
+    p = run([PY, "tests/test_ps5_setup.py"], timeout=600)
+    assert p.returncode == 0, tail(p, 30)
+    return tail(p, 1)
+
+
 @check("qa pipeline unit tests")
 def t_qa():
     for mod in ("numpy", "PIL"):
