@@ -1,6 +1,6 @@
-# Embeds the launcher artwork (converted by conv_assets.py into ~/lassets) as C arrays.
+# Embeds the launcher artwork (art/launcher, converted by conv_assets.py) as C arrays.
 import os, sys
-src = os.path.expanduser('~/lassets/')
+src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'art', 'launcher') + os.sep
 out = sys.argv[1]
 names = ['bg1.jpg', 'bg2.jpg', 'bg3.jpg', 'logo1.png', 'logo2.png', 'logo3.png']
 with open(out, 'w') as f:

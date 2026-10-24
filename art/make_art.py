@@ -15,7 +15,7 @@ os.makedirs(OUT, exist_ok=True)
 
 BG_TOP = (28, 24, 40)
 BG_BOTTOM = (10, 10, 18)
-FONT = r"C:\Windows\Fonts\segoeuib.ttf"
+FONT = os.path.join(HERE, "fonts", "NotoSansJP-Medium.ttf")
 
 
 def gradient(size, glow=True):
