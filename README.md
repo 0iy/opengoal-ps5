@@ -38,14 +38,33 @@ controller launcher, fast game import from your PC and a patched OpenGL-to-AGC g
 </table>
 
 <p align="center">
+<img src="docs/img/jak2.png" width="100%" alt="Jak II running on a PS5">
+</p>
+
+<p align="center">
 <img src="docs/img/launcher.png" width="49%" alt="Launcher"> <img src="docs/img/settings.png" width="49%" alt="Settings">
-<img src="docs/img/onboarding.png" width="49%" alt="Game import"> <img src="docs/img/jak1.png" width="49%" alt="Jak and Daxter">
-<img src="docs/img/jak2.png" width="49%" alt="Jak II"> <img src="docs/img/jak3.png" width="49%" alt="Jak 3">
+<img src="docs/img/onboarding.png" width="49%" alt="Game import"> <img src="docs/img/jak3.png" width="49%" alt="Jak 3">
 </p>
 
 <p align="center"><img src="docs/img/launcher-tour.gif" width="70%" alt="Launcher tour"><br><sub>Launcher tour, recorded from a console: switch games, open the settings and the controls page.</sub></p>
 
 <sub>The import screenshot shows simulated values (no import was running); the others are from a console.</sub>
+
+## Why this port
+
+OpenGOAL-PS5 runs the games as native PS5 programs. There is no emulator in between and nothing to convert or sign per game.
+
+| | OpenGOAL-PS5 | Installing a game as a package (PKG) |
+|---|---|---|
+| Per game | paste one line, drop the `.iso` | convert the disc image, build a package, install it |
+| Time to playable | about a minute (Jak 1 measured: 63 s) | depends on the tool; each game is its own package |
+| Picture | rendered natively at 1080p, 1440p or 4K, widescreen, FSR upscaling | fixed by the package or its emulator |
+| Frame rate | Jak 3 at 60 fps, Jak 2 at 50 to 58, Jak 1 at 58 to 60 (measured) | not measured here |
+| Menus and settings | controller launcher, console-aware options (no window or mouse entries) | whatever the original or the emulator shows |
+| Updates | one app; engine patches follow upstream OpenGOAL with a sync tool | repackage per game |
+| Needs | jailbroken PS5 on 13.60, your own discs | a package tool or store app, your own discs |
+
+The right column is about the usual PKG route in general, not one specific tool: only the left column is measured by this project.
 
 ## Start
 
@@ -86,14 +105,11 @@ Known issues: visual glitches in places, occasional frame-time spikes, 4K output
 ## How it fits together
 
 ```mermaid
-flowchart TB
-  PC["<b>PC</b><br/>installer/pc_import.py<br/>extract, decompile, pack"] -->|"finished game, one stream"| WEB
-  subgraph PS5["PS5: one app, OpenGOAL-PS5"]
-    direction TB
-    WEB["<b>web server</b> :8080<br/>unpacks while receiving"] --> LAUNCH["<b>launcher</b><br/>controller UI, settings"]
-    LAUNCH --> ENGINE["<b>OpenGOAL engine</b><br/>patched jak-project"]
-    ENGINE --> SHIM["<b>shim</b><br/>SDL replacement, GL fixes"]
-    SHIM --> DRV["<b>driver</b><br/>Mesa to AGC, patched"]
+flowchart LR
+  PC["<b>PC</b><br/>extract, decompile, pack"] -->|"finished game<br/>one stream"| APP
+  subgraph PS5["PS5: one app"]
+    direction LR
+    APP["<b>launcher + web server</b><br/>controller UI, unpacks while receiving"] --> ENG["<b>engine + shim</b><br/>patched OpenGOAL, GL fixes"] --> DRV["<b>driver</b><br/>Mesa to AGC"]
   end
   DRV --> TV(["TV, 60 fps"])
 ```

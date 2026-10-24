@@ -38,14 +38,33 @@ Controller-Launcher, schnellem Spielimport vom PC und einem angepassten OpenGL-z
 </table>
 
 <p align="center">
+<img src="docs/img/jak2.png" width="100%" alt="Jak II auf einer PS5">
+</p>
+
+<p align="center">
 <img src="docs/img/launcher.png" width="49%" alt="Launcher"> <img src="docs/img/settings.png" width="49%" alt="Einstellungen">
-<img src="docs/img/onboarding.png" width="49%" alt="Spielimport"> <img src="docs/img/jak1.png" width="49%" alt="Jak and Daxter">
-<img src="docs/img/jak2.png" width="49%" alt="Jak II"> <img src="docs/img/jak3.png" width="49%" alt="Jak 3">
+<img src="docs/img/onboarding.png" width="49%" alt="Spielimport"> <img src="docs/img/jak3.png" width="49%" alt="Jak 3">
 </p>
 
 <p align="center"><img src="docs/img/launcher-tour.gif" width="70%" alt="Launcher tour"><br><sub>Launcher-Rundgang, von einer Konsole aufgenommen: Spiele wechseln, Einstellungen und Steuerung.</sub></p>
 
 <sub>Der Screenshot der Import-Seite zeigt simulierte Werte (es lief kein Import); die anderen stammen von einer Konsole.</sub>
+
+## Warum dieser Port
+
+OpenGOAL-PS5 fuehrt die Spiele als native PS5-Programme aus. Es gibt keinen Emulator dazwischen und nichts, was pro Spiel konvertiert oder signiert werden muss.
+
+| | OpenGOAL-PS5 | Spiel als Paket (PKG) installieren |
+|---|---|---|
+| Pro Spiel | eine Zeile einfuegen, `.iso` hineinziehen | Abbild konvertieren, Paket bauen, installieren |
+| Bis spielbar | etwa eine Minute (Jak 1 gemessen: 63 s) | haengt vom Werkzeug ab; jedes Spiel ist ein eigenes Paket |
+| Bild | nativ in 1080p, 1440p oder 4K, Breitbild, FSR-Hochskalierung | vom Paket oder Emulator vorgegeben |
+| Bildrate | Jak 3 mit 60 fps, Jak 2 mit 50 bis 58, Jak 1 mit 58 bis 60 (gemessen) | hier nicht gemessen |
+| Menues | Controller-Launcher, Optionen ohne Fenster- und Maus-Eintraege | was das Original oder der Emulator zeigt |
+| Updates | eine App; Engine-Patches folgen OpenGOAL ueber ein Sync-Werkzeug | pro Spiel neu paketieren |
+| Voraussetzung | gejailbreakte PS5 mit 13.60, eigene Discs | Paket-Werkzeug oder Store-App, eigene Discs |
+
+Die rechte Spalte beschreibt den ueblichen PKG-Weg allgemein, kein bestimmtes Werkzeug: nur die linke Spalte hat dieses Projekt gemessen.
 
 ## Start
 
