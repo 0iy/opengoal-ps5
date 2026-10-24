@@ -10,8 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python -m pip install pillow numpy
-      - run: python tests/run_all.py
+      - name: Install what the suite needs
+        run: sudo apt-get update && sudo apt-get install -y xvfb python3-tk python3-pil python3-numpy g++
+      - name: Run the offline suite
+        run: xvfb-run -a python3 tests/run_all.py

@@ -46,7 +46,7 @@ quick = boot, title, play at 6/14/26 s (Jak 3 at 10/30/50 s); full Jak 1 and Jak
 | Path | Content | In git |
 |---|---|---|
 | `tests/qa/baseline.json` | numbers of the quick mode for Jak 2 and Jak 3 from the maintainer's console | yes |
-| `tests/qa/golden/` | golden screenshots and noise masks | no: they are frames of the games |
+| golden folder next to the baseline (`golden`) | golden screenshots and noise masks | no: they are frames of the games |
 | `tests/qa/runs/`, `tests/qa/reports/` | collected runs and reports | no |
 
 The baseline is a starting point: your console, firmware and scenes differ. Run `tools/ps5 qa --full --update-baseline` once to record your own, and the golden
