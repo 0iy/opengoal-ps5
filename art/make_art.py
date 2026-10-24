@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build the app art (icon0.png, pic0.dds, pic1.dds) from the OpenGOAL logo files.
-Inputs (next to this script's parent): og_icon.png (OpenGOAL mask), og_logo_text.png (wordmark).
+Inputs (next to this script): og_icon.png (OpenGOAL mask), og_logo_text.png (wordmark).
 Outputs go to ./out/. The DDS files reuse the header of an existing 1920x1080 RGBA8 DDS."""
 import os
 import struct
@@ -48,7 +48,7 @@ def paste_center(base, layer, cy_frac, width):
 
 def make_icon():
     icon = gradient((512, 512), glow=False)
-    mask = Image.open(os.path.join(ROOT, "og_icon.png")).convert("RGBA")
+    mask = Image.open(os.path.join(HERE, "og_icon.png")).convert("RGBA")
     mask = mask.resize((420, 420), Image.LANCZOS)
     icon.paste(mask, ((512 - 420) // 2, 40), mask)
     d = ImageDraw.Draw(icon)
@@ -61,7 +61,7 @@ def make_icon():
 
 def make_background():
     bg = gradient((3840, 2160))
-    logo = Image.open(os.path.join(ROOT, "og_logo_text.png")).convert("RGBA")
+    logo = Image.open(os.path.join(HERE, "og_logo_text.png")).convert("RGBA")
     paste_center(bg, logo, 0.46, 2600)
     d = ImageDraw.Draw(bg)
     f = ImageFont.truetype(FONT, 128)

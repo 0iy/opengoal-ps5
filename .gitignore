@@ -1,98 +1,52 @@
-# third-party checkouts (see docs/SETUP_NEW_MACHINE.md for URLs and pinned commits)
+# third-party checkouts (see docs/DEVELOPMENT.md for URLs and pinned commits)
 /jak-project/
 /playden-ps5/
 /ps5-native-app-boilerplate/
 /ps5debug-NG/
 /sdk/
 /sdk-install/
-/tools/prospero-lld.exe
 
 # game data, copyrighted media and console dumps: never commit
 *.iso
-*.bin
 *.at9
 *.mp3
 *.wav
 *.ogg
 *.dds
-/at9enc/*.at9
-/snd0_original.at9
-/pcs_jak3_backup.gc
-/skeleton.tar.zst
-/release/
-/vid/
-
-# generated / local
-dbg.log
-dbg_server.log
-auto_recover.*
-*.log
-*.o
-*.pyc
-__pycache__/
-nul
-.deployed_sha1
-/ps5shim/launcher_assets.cpp
-/build_out.txt
-/pin_trial.out
-/dbgflag.tmp
-
-# screenshots and debugging pictures (keep the OpenGOAL logo sources and the app art sources)
-/*.png
-!/og_icon.png
-!/og_logo_text.png
-/art/out/
-/art/sce_sys/*.dds
-/art/sce_sys/*-source.png
-/*.frag
-/*.vert
-!/tfrag3.frag
-!/tfrag3.vert
-/last_run.log
-/perf_runs/
-/klog*.txt
-/lk.bin
-
-# --- release hygiene (see docs/RELEASE_AUDIT.md) ---
-# measurement output, QA runs, logs, dumps
-/perf_runs/
-/qa/reports/
-/qa/runs/
-/backup/
+*.zst
 *.ppm
-*.p45
-shot*.png
-/udp_log*.txt
-/klog*.txt
-/iso_*.txt
-/push_*.txt
-/tb_m.txt
-*.trace*.bin
-# caches, dependencies, build output
-node_modules/
-__pycache__/
-.cache/
-*.cache
-shader_cache/
+/art/dds_header.bin
+
+# local run output
 /out/
-# compiled test binaries and diagnostic payload variants (rebuild from source; ship ELFs in releases only)
+/release/
+/archive/
+/backup/
+/shots_all/
+/perf_runs/
+/vid/
+/*.log
+/*.txt
+/.ps5_ip
+*.trace*.bin
+
+# QA runs and reports are local; golden screenshots are copyrighted game images
+/tests/qa/runs/
+/tests/qa/reports/
+/tests/qa/golden/
+
+# generated sources and build output
+/app/shim/launcher_assets.cpp
+/art/out/
+/art/sce_sys/*-source.png
 /tests/conv_test
 /tests/qr_test
-/m1/v?.elf
-/m1/diag_*.elf
-/m1/klog_*.elf
-# personal assistant notes (contain console addresses and account details)
+__pycache__/
+*.pyc
+*.o
+node_modules/
+.cache/
+shader_cache/
+nul
 /docs/assistant_memory/
-/archive/
-/qa/golden/
-/qa/runs/
-/qa_baseline.log
-/release/
-/skeleton.tar.zst
-/shots_all/
-/import_status.log
-/import_test.log
-/pc_import_run.log
-/archive/
-/release/
-.ps5_ip
+/.deployed_sha1

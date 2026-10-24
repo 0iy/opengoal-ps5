@@ -1,0 +1,6 @@
+{
+  "repo": "https://github.com/open-goal/jak-project",
+  "commit": "553a713aed3794f454fa7b45a1f1ef443bbb914a",
+  "note": "Pinned upstream base of our patched tree. Bump only via: tools/ps5 sync snapshot --update-lock after a verified port.",
+  "patched_diff_sha256": "a66501f65ee8ba8ff1c96bad24dc34d1eaf2e32be6bb3671b65584361b4d342b"
+}

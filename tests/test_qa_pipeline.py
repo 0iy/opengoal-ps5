@@ -1,4 +1,4 @@
-"""Offline tests for qa_pipeline.py (fake logs and images). Run: python -m unittest tests/test_qa_pipeline.py"""
+"""Offline tests for qa_pipeline.py (fake logs and images). Run: python tests/run_all.py"""
 import json
 import os
 import sys
@@ -8,7 +8,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
 import qa_pipeline as Q  # noqa: E402
 
 

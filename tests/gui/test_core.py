@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Headless tests for gui/OpenGOAL-PS5-gui.py: ISO detection, progress parser, discovery, engine run (fake engine), optional Tk smoke.
+"""Headless tests for installer/gui/OpenGOAL-PS5-gui.py: ISO detection, progress parser, discovery, engine run (fake engine), optional Tk smoke.
 Run: python tests/gui/test_core.py   (everything stays on 127.0.0.1, no console is contacted)"""
 import importlib.util, os, subprocess, sys, tempfile, threading, time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-os.environ.update(OGPS5_PORT="18081", OGPS5_SCAN_PREFIX="127.0.0.", OGPS5_LANG="en", OGPS5_ENGINE=os.path.join(ROOT, "pc_import_fake.py"), FAKE_SLEEP="0.01")
-spec = importlib.util.spec_from_file_location("ogui", os.path.join(ROOT, "gui", "OpenGOAL-PS5-gui.py"))
+os.environ.update(OGPS5_PORT="18081", OGPS5_SCAN_PREFIX="127.0.0.", OGPS5_LANG="en", OGPS5_ENGINE=os.path.join(ROOT, "tests", "gui", "pc_import_fake.py"), FAKE_SLEEP="0.01")
+spec = importlib.util.spec_from_file_location("ogui", os.path.join(ROOT, "installer", "gui", "OpenGOAL-PS5-gui.py"))
 g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
 sys.path.insert(0, os.path.dirname(__file__)); import make_fake_iso
 
