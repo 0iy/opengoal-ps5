@@ -10,11 +10,13 @@ Remove your console address and account names from logs before posting. Do not a
 ## Pull requests
 
 - Keep changes small and say what you measured (fps, tracer numbers, screenshots) and on which firmware.
-- Driver and engine changes: idempotent patch script with a marker and asserted replacements (style of `drv_patch47.py`), switchable at runtime
-  by a flag file, default unchanged.
-- Run what applies: `python -m unittest tests/test_qa_pipeline.py`, `node tests_onboarding_web.js`, `python3 sync_upstream.py preflight`.
-- No game data, copyrighted media, firmware, keys, console dumps, personal addresses or tokens. Use `192.168.x.y` in docs.
+- Engine changes: an idempotent patch script in `engine/` with a marker and asserted replacements (`assert s.count(old) == 1`), added to `engine/ports/manifest.json`.
+  Driver changes: edit the SDK sources and regenerate `driver/ps5-opengl.patch` (see `driver/README.md`).
+  Either way the new behaviour is switchable at runtime by a flag file and the default is unchanged.
+- Run `python tests/run_all.py` before you push; it needs no console and must end without FAIL.
+- Commit subjects are short sentences without prefixes.
+- No game data, copyrighted media, firmware, keys, console dumps, personal addresses or tokens. Write `PS5_ADDRESS` instead of an address in docs and logs.
 - New files need a licence compatible with GPL-3.0-or-later; list third-party code in `THIRD_PARTY_NOTICES.md`.
 - No code that writes kernel flags, bypasses game protection or supports piracy.
 
-Layout and build: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+Layout, `tools/ps5` commands and build: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).

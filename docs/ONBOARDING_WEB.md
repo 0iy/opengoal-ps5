@@ -1,8 +1,8 @@
 # ISO onboarding web page
 
-Served by the app on port 8080. Files: `ps5shim/webpage.cpp` (page), `webserver.cpp` (HTTP, SSE, upload, queue, status), `importer.cpp`
+Served by the app on port 8080. Files: `app/shim/webpage.cpp` (page), `webserver.cpp` (HTTP, SSE, upload, queue, status), `importer.cpp`
 (extractor wrapper, ISO pre-check, progress hooks), `import_progress.h` (pure percent/ETA logic, host-tested), `include/ps5import.h`
-(C API for the launcher), `patch_import_progress.py` (optional upstream patch). No external requests, no dependencies, no images
+(C API for the launcher), `engine/patch_import_progress.py` (optional upstream patch). No external requests, no dependencies, no images
 (game cards are CSS gradients with a numeral). Language follows the browser (de/en), toggle top right. Honours `prefers-reduced-motion`.
 
 ## Flow
@@ -66,7 +66,7 @@ step strip (Upload, Check, Unpack, Analyse, Build). When two or more games are i
 chunk byte (-1 never). `reason`: pre-check `notiso tiny raw truncated nosys unknown wrong_game`; import `toolchain unknown_disc bad_contents bad_iso extract decompile compile cancelled`;
 transient `cancelling` while a running import is being stopped; page-only `ext dup busy no_space io net incomplete`.
 
-## C API for the launcher (`ps5shim/include/ps5import.h`)
+## C API for the launcher (`app/shim/include/ps5import.h`)
 
 ```c
 struct Ps5GameStatus { int installed; int phase /*0 idle,1 uploading,2 verifying,3 queued,4 importing,5 done,6 failed*/;
@@ -86,7 +86,7 @@ Implemented in `webserver.cpp` (same data as the JSON). Thread safe (one mutex).
 | decompile | `[Mem] After ...` milestone lines (weights in `import_progress.h`) and one `stats for <level>` line per extracted level between "textures" (52%) and "extraction" (96%) | milestone weights and expected level counts (22/30/30) are estimates |
 | compile | goalc `MakeSystem::make` loop: `ps5_import_progress(4, done, total)` per build target | exact count of targets |
 
-All of this needs `patch_import_progress.py` (manifest step `import-progress`, required=false, requires `core`). It adds weak hooks to
+All of this needs `engine/patch_import_progress.py` (manifest step `import-progress`, required=false, requires `core`). It adds weak hooks to
 `common/log/log.cpp` (`ps5_import_log`) and `goalc/make/MakeSystem.cpp` (`ps5_import_progress`), implemented in `importer.cpp`. Without the patch the
 page still works: stage names, elapsed, indeterminate stage bar, overall percent only moves at stage boundaries.
 
@@ -118,11 +118,10 @@ Do not quote a before/after number until `import: stage` timestamps from a real 
 
 ## Tests
 
-- `node tests_onboarding_web.js`: page script with stubbed DOM and mocked API (serial detection, rejections, sequential upload, duplicate, resume skips chunks, speed/ETA/percent text,
+- `tests/test_onboarding_web.js` (node): page script with stubbed DOM and mocked API (serial detection, rejections, sequential upload, duplicate, resume skips chunks, speed/ETA/percent text,
   stalled upload, overall bar, failure text, cancel call, German and English). Passes.
-- `g++ -std=c++17 -Wall -Wextra -I ps5shim tests_import_progress.cpp -o /tmp/tip && /tmp/tip`: percent bands sum to 100, monotonic overall, ETA, log-line parser. Passes.
-- `bash tests_webserver_host.sh` (WSL): compiles `webserver.cpp` with a stubbed importer and a temp data dir; begin / chunk / resume / start-incomplete (409) / start / status / SSE / cancel / settings. Passes.
-- `g++ -std=c++17 -fsyntax-only -Wall -Wextra -I ~/jak ps5shim/{webserver,importer,webpage}.cpp`: clean. `patch_import_progress.py` applied twice to a private copy (`JAK_ROOT=/tmp/...`): second run "already patched". The patched upstream files were NOT compiled.
+- `tests/host/import_progress_test.cpp`: percent bands sum to 100, monotonic overall, ETA, log-line parser. Passes.
+- `tests/host/webserver_host.sh` (WSL): compiles `webserver.cpp` with a stubbed importer and a temp data dir; begin / chunk / resume / start-incomplete (409) / start / status / SSE / cancel / settings. Passes.
 
 ## Not verified
 
@@ -136,4 +135,4 @@ Do not quote a before/after number until `import: stage` timestamps from a real 
 
 ## PC import (alternative to the ISO upload)
 
-`pc_import.py` does the extract/decompile on the PC and sends the finished game with `PUT /api/install`; the status JSON, the C API and the launcher card use the existing fields (stage `install`). `installed()` now needs `out/<id>/fr3`, `out/<id>/iso` and `game/assets` (no longer `obj`). Details, measurements and the console test plan: `docs/PC_IMPORT.md`.
+`installer/pc_import.py` does the extract/decompile on the PC and sends the finished game with `PUT /api/install`; the status JSON, the C API and the launcher card use the existing fields (stage `install`). `installed()` now needs `out/<id>/fr3`, `out/<id>/iso` and `game/assets` (no longer `obj`). Details, measurements and the console test plan: `docs/PC_IMPORT.md`.

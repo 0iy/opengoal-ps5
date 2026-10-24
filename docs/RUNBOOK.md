@@ -1,51 +1,47 @@
-# Runbook: operating the console and the build loop
+# Runbook: operating the console
 
-Console: PS5 CFI-2016 B01Y, firmware 13.60, IP `192.168.x.y` (LAN since 2026-10-23, MAC `xx:xx:xx:xx:xx:xx`). PC: `192.168.x.y`.
-The debug channel host is `/data/opengoal/config/debughost.txt` (must match the PC address).
+For developers. Users follow [`INSTALL.md`](INSTALL.md). Tested console: PS5, firmware 13.60. The console address is `PS5_IP` or the git-ignored `.ps5_ip`.
 
-## Boot order that works (after every console restart; the user runs the browser exploit and the ELF loader)
+## Boot order that works (after every console restart)
 
-1. Exploit and ELF loader (port 9021 open). Nothing else.
-2. `kstuff-lite_v1.11.elf` (send to 9021). Wait about 20 s.
-3. `ftpsrv-ps5.elf` (FTP 2121), `smp_1.7beta7.elf` (ShadowMountPlus, mounts `/data/homebrew/LAPY77001` on launch),
-   optionally `shsrv-ps5.elf` (plain TCP shell on 2323, not SSH; `ps`, `cat`, `ls`, `cp`, `launch`, `kill`).
-4. Do NOT load OnionHEN before: with OnionHEN's built-in kstuff the fake-signed eboot is refused (`0x80020008`,
-   klog `sceSblAuthMgrAuthHeader returned unexpected error 46`).
-   Payload files used so far were verified against release digests; they live in the session scratchpad, re-download from
-   `EchoStretch/kstuff-lite`, `ps5-payload-dev/ftpsrv`, `ps5-payload-dev/shsrv`, ShadowMountPlus releases.
-5. `ps5dbg_maps.py list` (port 744) works when a ps5debug payload runs; it is read-only.
+1. Browser exploit and ELF loader (port 9021 open). Nothing else yet.
+2. `kstuff-lite` (send to 9021), wait about 20 s.
+3. `ftpsrv-ps5.elf` (FTP 2121), ShadowMountPlus (mounts `/data/homebrew/LAPY77001` when the app launches), optionally `shsrv-ps5.elf` (plain TCP shell on 2323:
+   `ps`, `cat`, `ls`, `cp`, `launch`, `kill`).
+4. Do not load OnionHEN before the app: with its built-in kstuff the fake-signed eboot is refused (`0x80020008`, kernel log
+   `sceSblAuthMgrAuthHeader returned unexpected error 46`).
+5. A ps5debug payload on port 744 is optional; `python tools/ps5dbg_maps.py list` is read-only.
 
-Never write kernel flags from payloads. Do not restart the console from scripts.
+Payloads come from their upstream releases (`EchoStretch/kstuff-lite`, `ps5-payload-dev/ftpsrv`, `ps5-payload-dev/shsrv`, ShadowMountPlus): verify them
+against the release digests. Never write kernel flags from payloads. Never restart the console from scripts.
 
-## Build loop (WSL, Ubuntu; repo path `/mnt/c/Users/<you>/dev/projects/opengoal-ps5`)
+## Daily loop
 
 ```
-bash drv_cc_cache.sh        # ps5_screen.o with GPU mip blits and shader cache id (the only correct driver build)
-bash drv_cc_backend.sh      # ps5_agc_runtime_backend.o (runtime, 2 prep workers)
-touch ~/ogapp/src/ogmain.cpp && bash rebuild_all.sh    # engine, shim, link, eboot.bin in ~/ogapp/dist/LAPY77001
-python ps5.py kill; python ps5.py deploy --force      # app must not run during deploy
+tools/ps5 doctor           # toolchain files, and the console ports when an address is set
+tools/ps5 go jak3 60       # build, kill, deploy, run for 60 s
+tools/ps5 log "fps|CRASH"  # grep the console log of the last start
 ```
-Driver patches: `python3 drv_patchNN.py` (idempotent). Shim patches: `python shim_patch_*.py`. The driver source tree is
-`~/gl/src/ps5-opengl/src` (not in git). Tools expect `PYTHONIOENCODING=utf-8` on Windows.
 
-## Measurement loop
-
-```
-python perfround.py jak2_x jak2 90 trace [flag ...]     # jak3: 190 s, tracer window 100 s start
-python trace2json.py perf_runs/jak2_x.trace_<n>.bin -     # statistics; give a second argument only to write JSON (it overwrites!)
-bash perf_suite.sh jak3 190 label1 "" label2 asyncmultidraw ...
-```
-Rules: never use `gputrace` for fps; compare runs of the same scene (Jak 2 starts in the intro, the city is reached at about 40 s;
-Jak 3 is driven by `rplay.py` into the new game, gameplay after about 100 s); a driver rebuild invalidates the shader cache, the first
-run after a deploy has hitches (do a warm-up run).
+After rest mode the loader (9021) and FTP (2121) usually survive but the shell payload can accept connections and stay silent; `tools/ps5` then launches and kills
+the app through `payloads/launchapp.elf` and `payloads/killapp.elf` via the loader. If every port is closed the jailbreak is gone: run the exploit again.
 
 ## Logs
 
-UDP broadcast on port 9999 (all `ps5_log` lines, one listener at a time), `last_run.log` (written by `ps5.py run`),
-`/data/opengoal/log/ps5.log` on the console (200+ MB, read with FTP REST), kernel log via `m1/klog_dump.elf`
-(`-DALL` build `klog_all.elf` for the full stream), crash reports in klog (`# fault address`, `# rip`).
+| Source | How |
+|---|---|
+| App log | UDP broadcast on port 9999 (one listener at a time); `tools/ps5 run` prints it and saves `out/last_run.log` |
+| Full log on the console | `/data/opengoal/log/ps5.log` (200+ MB, read with FTP REST): `tools/ps5 log` |
+| Kernel log | `payloads/klog_dump.c` (build with `-DALL` for the full stream), crash reports contain `# fault address` and `# rip` |
+| Crash addresses | `tools/ps5 sym <runtime address of ps5_log> <address> ...` resolves them against the app ELF in WSL |
+| Debug channel | `tools/ps5 dbg ping`; the app dials out to the PC on TCP 9998 when `/data/opengoal/config/debughost.txt` holds the PC address |
 
-## Backups and safety
+## Payloads
 
-`backup/`: original console eboot, `param.json.orig`, `snd0_console_2026-10-23.at9`, `jak2_pc-settings.gc`, Slot 1 registry values before the
-ActRemoteLink fake sign-in (`slot1_registry_before.json`), `arl_agent_noguard.elf`. On the console: `/data/arl_backup/{config.dat,auth.dat}`.
+`payloads/` holds sources and prebuilt ELFs for `killapp`, `launchapp`, `scan` (used by the installer) and `keepalive` (resets the auto power-down timer every
+20 s while you work). `klog_dump.c` and `kstuff_state.c` are diagnostics (read the kernel log, read kstuff's enable flag; `0xffff` is normal on 13.60) and
+are built on demand. Rebuild with `bash payloads/build.sh <file.c> <out.elf>` (needs `PS5_SDK`, the ps5-payload-sdk install, and clang with lld).
+
+## Stray settings
+
+Stray controller presses in the launcher change `ps5.cfg` (resolution to 4K, for example). `tools/rplay.py` resets it; check `resolution=0` before measuring.

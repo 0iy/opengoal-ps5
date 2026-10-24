@@ -38,7 +38,7 @@ app packaging tree `~/ogapp` (`app/setup_ogapp.sh`).
 1. Download `sdk.tgz` of the ps5-opengl SDK release 1.0.0 (sha256 `f93643c04c843d56143b00951df1f8042ea7706ae9f19e4e9abf158e1ead77c5`) to `~/gl/sdk.tgz`.
 2. `bash driver/build/setup.sh` unpacks it to `~/gl`, applies `ps5-opengl.patch` to `~/gl/src/ps5-opengl` and links `~/drv`.
    The compile step needs Mesa headers and the generated shader compiler sources from the SDK's own source tree. Prepare that tree as
-   the SDK describes (`tools/fetch-sources.py`, `toolchain/build-opengnm-psbc.sh`, `toolchain/build-mesa-ps5.sh`); it creates
+   the SDK describes (`fetch-sources.py` in its `tools/`, `toolchain/build-opengnm-psbc.sh`, `toolchain/build-mesa-ps5.sh`); it creates
    `third_party/` and `build/mesa-ps5-probe`, which `~/drv` points to.
 3. Compile the three objects:
 

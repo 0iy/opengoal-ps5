@@ -1,6 +1,6 @@
 # PC import: do the heavy work on the PC, send only the finished game
 
-`pc_import.py` (Python 3.8+, standard library only, Windows / macOS / Linux) extracts the user's ISO and decompiles the game data with the
+`installer/pc_import.py` (Python 3.8+, standard library only, Windows / macOS / Linux) extracts the user's ISO and decompiles the game data with the
 **official OpenGOAL tools** on the PC, assembles the minimal runtime data (the "play set") and streams it to the console with
 `PUT /api/install`, where it is unpacked while it arrives. The on-console importer (ISO upload, extractor, decompiler, goalc) stays as the
 fallback and is untouched.
@@ -23,7 +23,7 @@ All times are wall seconds, warm file cache, ISO and project on the system SSD.
 | WSL2 Ubuntu limited to 2 vCPU, ext4, official Linux tools (**measured**) | extract / decompile / compile | 7.2 / 11.4 / 25.9 = 44.5 | |
 | | whole run to a loopback test server (real receiver code, no network limit) | | playable at 25.7, voice extras done at 33.2 |
 | | same run without a codepack (full goalc build, the fallback) | | 51.1 (dry run) |
-| Console, on-console import (the reason for this work) (**measured earlier by the main session**) | extract about 1 MB/s => 30+ min, decompile + compile longer | | |
+| Console, on-console import (the reason for this work) (**measured earlier**) | extract about 1 MB/s => 30+ min, decompile + compile longer | | |
 
 Network part (**estimate**, not measured): the core play set is 729 MB raw and 553 MB on the wire. Gigabit Ethernet at about 100 MB/s: about 6 s.
 Wi-Fi at about 30 MB/s: about 18 s. Compression and sending overlap with the PC work after the decompile. Rough end-to-end *estimate* for the
@@ -109,7 +109,7 @@ The decompiler is the same code, so this is assumed harmless, but a Windows-extr
 
 Stream (`PS5IMP01`): magic, then frames `{u32 codec, u32 clen, u32 rlen, payload}` little endian: codec 0 raw, 1 raw deflate (RFC 1951, no zlib header), 255 END with
 `u32 crc32` + `u64 byte count` of the whole raw stream. The raw stream is one ustar archive: regular files and directories only, names up to 99 characters.
-Reference encoder/decoder: `pc_import.py` (`stream_frames`, `unpack_stream`); receiver: `ps5shim/install_stream.h` (state machine, bytes in, no sockets), `ps5shim/inflate_lite.h`
+Reference encoder/decoder: `pc_import.py` (`stream_frames`, `unpack_stream`); receiver: `app/shim/install_stream.h` (state machine, bytes in, no sockets), `app/shim/inflate_lite.h`
 (about 200 lines, table driven, no zlib dependency because the console build links zstd but not zlib).
 
 ```
@@ -119,7 +119,7 @@ PUT /api/install?game=jak1&total=RAW_TAR_BYTES&mode=replace|add&serial=SCES-5036
     409 {"error":"busy"|"nogame"}  400 {"error":"total"}  422 {"error":"bad_contents"|"cancelled"}  500 {"error":"io"|"no_space"}
 ```
 
-`webserver.cpp` `handle_install` (all existing `/api/*` unchanged; `tests_webserver_host.sh` still passes):
+`webserver.cpp` `handle_install` (all existing `/api/*` unchanged; `tests/host/webserver_host.sh` still passes):
 
 * one install at a time, refused (409) while this game is verifying, queued, importing or has an upload that sent bytes in the last 10 s;
 * `replace`: unpacks while receiving into `/data/opengoal/<game>/data.new` (files written straight to their final name, no temp copy, no second pass), verifies CRC32 and the declared total,
@@ -165,12 +165,12 @@ pc_import.py --game auto|jak1|jak2|jak3 --iso PATH --ps5 IP [--port 8080] [--too
 * **Measured, and the reason the codepack must be built on a POSIX goalc and shipped, not rebuilt on the user's PC:** 97 of the 518 `.o` produced by the *Windows* goalc differ from the Linux
   ones (a few bytes each, e.g. `xor r12,r12` vs `xor r10,r10`: different register allocation), so 21 DGO/CGO differ. Two Linux builds are byte identical to each other (518/518). The Windows output
   is probably valid on SysV, but that is **unverified**; the fallback compile therefore warns on Windows. macOS was not tested (no machine): its goalc is expected to behave like Linux.
-* **Console-built vs Linux-built objects are not byte identical** (comparison by size with `docs/console_jak1_tree.txt`): 1031 of 1039 `obj` files and 24 of 27 DGO/CGO files have the same size; the 8
+* **Console-built vs Linux-built objects are not byte identical** (comparison by file size against an earlier on-console install): 1031 of 1039 `obj` files and 24 of 27 DGO/CGO files have the same size; the 8
   `.o` that differ are `collide-cache`, `collide-edge-grab`, `collide-mesh`, `collide-reaction-target`, `fisher` (not patched by us, 2 to 16 bytes) and the three PS5-patched sources `text-h`, `pckernel-common`, `progress-pc`
   (the console install may predate the current patch set). So the official Linux goalc and the console's goalc do not generate identical code for 5 files; semantics are assumed equal. **Safest codepack
   source: the objects of a working console install** (section 8).
-* Legal: the codepack and the pack contain only the open-source `goal_src` (patched by `ports/manifest.json`) compiled, nothing derived from a disc. Everything disc-derived (STR/MUS/VAG/DGO data, raw_obj, TXT, fr3) is produced on the user's PC from the user's own ISO and is not stored anywhere else.
-  Codepack/pack are bound to the engine: they must be rebuilt whenever `ports/upstream.lock` or the manifest patches change (they carry `release` and `serial`/key in `recipe.json`; there is no automatic compatibility check yet).
+* Legal: the codepack and the pack contain only the open-source `goal_src` (patched by `engine/ports/manifest.json`) compiled, nothing derived from a disc. Everything disc-derived (STR/MUS/VAG/DGO data, raw_obj, TXT, fr3) is produced on the user's PC from the user's own ISO and is not stored anywhere else.
+  Codepack/pack are bound to the engine: they must be rebuilt whenever `engine/ports/upstream.lock` or the manifest patches change (they carry `release` and `serial`/key in `recipe.json`; there is no automatic compatibility check yet).
 
 ## 8. Maintainer: producing the pack and codepacks
 
@@ -182,30 +182,29 @@ EX=~/tools/extractor; P=~/proj          # P = copy of the patched tree with goal
 $EX game.iso --proj-path $P --game jak1 --extract --validate
 $EX $P/iso_data/jak1 --folder --proj-path $P --game jak1 --decompile --compile
 # 2. harvest (verifies all DGOs byte for byte)
-python3 pc_import.py --make-codepack cps/jak1-SCEE.tar --from-build $P
+tools/ps5 import --make-codepack cps/jak1-SCEE.tar --from-build $P
 # 3. the pack the PCs download
-python3 pc_import.py --make-pack pack.tgz --from-tree ~/jak --codepacks cps        # 21 MB, prints the sha256
+tools/ps5 import --make-pack pack.tgz --from-tree ~/jak --codepacks cps        # 21 MB, prints the sha256
 ```
 
 Recommended instead of step 1's compile, because those objects are proven on the PS5 engine: use a working console install. Copy `out/jak1/obj/*.o` (and the console's `iso/*.DGO,*.CGO,*.TXT`
 for the byte comparison) next to a PC extract + decompile into `$P/out/jak1/`, then run step 2; `--make-codepack` fails if the PC-decompiled `raw_obj` or the objects do not rebuild the console's DGOs exactly.
 (Needs FTP access to the console; **not done here**.) Variant keys: `jak1-SCEA`, `jak1-SCEA-bl` (SCUS-97124 with ELF hash 7280758013604870207), `jak1-SCEE`, `jak1-SCEI`, `jak2-<territory>`, `jak3-<territory>`.
-Only `jak1-SCEE` exists (`~/pcimp/cps/jak1-SCEE.tar` in WSL, 2.7 MB; the pack `~/pcimp/pack.tgz`, 21 MB, sha256 15a18a26157745bc7adf7f2c9f8b6ee476ddbc3016d629858f5a7cfab7048bcc). Jak 2 and Jak 3 were
+Only `jak1-SCEE` exists (the codepack is 2.7 MB, the pack 21 MB, pack sha256 15a18a26157745bc7adf7f2c9f8b6ee476ddbc3016d629858f5a7cfab7048bcc). Jak 2 and Jak 3 were
 never run: their `.gd` discovery, recipe and play set are untested (the codepack builder would refuse to write a wrong DGO recipe, the rest is unverified).
 
-## 9. How to verify on the console (the main session)
+## 9. How to verify on the console
 
 0. Back up what works. A successful `replace` deletes the old `data`: `mv /data/opengoal/jak1/data /data/opengoal/jak1_bak/data` (or copy) before the test.
-1. Build/deploy the app with the new `ps5shim/webserver.cpp`, `install_stream.h`, `inflate_lite.h`, `webpage.cpp` (no build script change: header-only; `webserver.cpp` still compiles with the same flags, host check below).
+1. Build/deploy the app with the new `app/shim/webserver.cpp`, `install_stream.h`, `inflate_lite.h`, `webpage.cpp` (no build script change: header-only; `webserver.cpp` still compiles with the same flags, host check below).
 2. `curl http://<ps5>:8080/api/info` must answer `{"install_api":1,...}`.
 3. From the PC (use the PAL pack above for the PAL disc; any other variant falls back to the slow full build, expect about 45 to 50 s more):
-   `python pc_import.py --game auto --iso C:\path\jak1.iso --ps5 <ps5-ip> --pack pack.tgz --json-progress`
+   `tools/ps5 import --game auto --iso jak1.iso --ps5 <ps5-ip> --pack pack.tgz --json-progress`
    The last `install` line with `"playable":true` is the time to quote. Watch `curl http://<ps5>:8080/api/status` (stage `install`, percent, speed) and the launcher card.
-4. Check the tree over FTP: `/data/opengoal/jak1/data/{.ps5ready,out/jak1/iso,out/jak1/fr3,game/assets/jak1,game/graphics/opengl_renderer/shaders,goal_src/user}`; compare the `iso` file list and sizes with the old install (`docs/console_jak1_tree.txt`): DGO/CGO/STR/VAG equal, TXT/fr3 may differ.
+4. Check the tree over FTP: `/data/opengoal/jak1/data/{.ps5ready,out/jak1/iso,out/jak1/fr3,game/assets/jak1,game/graphics/opengl_renderer/shaders,goal_src/user}`; compare the `iso` file list and sizes with the old install: DGO/CGO/STR/VAG equal, TXT/fr3 may differ.
 5. Start the game from the launcher; play through the intro and a level change (fr3 loading, voices, movies). Then switch the in-game language to check the extra voice banks.
-6. Negative tests: pull the cable during the upload (expect `data` untouched and no `data.new`), `pc_import.py --ps5 <ip>` while a second install runs (409 busy), cancel from the web page.
-7. Host checks (no console): `python3 pc_import.py --selftest`; `bash tests_install_host.sh` (WSL; builds the real `webserver.cpp` with a stubbed importer, drives it with the real `pc_import.py` upload code: replace twice, add, corrupt stream, truncated stream, `..` and absolute paths, wrong total, receiver with 1/7/4093-byte pieces);
-   `bash tests_webserver_host.sh` (old API); `g++ -std=c++17 -fsyntax-only -Wall -Wextra -I ps5shim -I ~/jak ps5shim/webserver.cpp ps5shim/importer.cpp ps5shim/webpage.cpp`; `node tests_onboarding_web.js`.
+6. Negative tests: pull the cable during the upload (expect `data` untouched and no `data.new`), `tools/ps5 import --ps5 <ip>` while a second install runs (409 busy), cancel from the web page.
+7. Host checks (no console): `tools/ps5 test` runs `pc_import.py --selftest`, `tests/host/install_host.sh` (WSL; builds the real `webserver.cpp` with a stubbed importer and drives it with the real upload code: replace twice, add, corrupt stream, truncated stream, `..` and absolute paths, wrong total, receiver fed with 1/7/4093-byte pieces), `tests/host/webserver_host.sh` (the older API) and `tests/test_onboarding_web.js`.
 
 ## 10. Risks and open items
 
@@ -218,5 +217,5 @@ never run: their `.gd` discovery, recipe and play set are untested (the codepack
 * `replace` deletes the previous install; no fsync; the swap happens while the app runs (if the game process is running from `data`, do not install).
 * `mode=add` is not atomic as a whole (per file only). A second concurrent import for another game is allowed (only CPU contention).
 * Python `zlib.crc32` and deflate release the GIL, the producer is one thread: the sender tops out around 300 to 500 MB/s, far above the network, but a slow disk on the PC (HDD) makes extract (1.4 GB) and the reads the bottleneck.
-* The pack/codepack have no signature or automatic engine-compatibility check; the tools download is pinned by sha256 but the pack URL/hosting is not decided (use `--pack`).
+* The pack/codepack have no signature or automatic engine-compatibility check; the tools download is pinned by sha256 but the pack is passed with `--pack`.
 * macOS: asset names and sha256 are from the release API, never downloaded or run here. Apple Silicon support in upstream arrived after v0.3.6 (UPSTREAM_SYNC.md); the arm64 asset may not extract/decompile.
