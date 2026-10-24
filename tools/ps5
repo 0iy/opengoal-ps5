@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Launcher for tools/ps5.py (Linux, macOS, WSL, Git Bash).
+d=$(cd "$(dirname "$0")" && pwd)
+if command -v python3 >/dev/null 2>&1; then exec python3 "$d/ps5.py" "$@"; fi
+exec python "$d/ps5.py" "$@"
