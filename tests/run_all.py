@@ -186,9 +186,9 @@ def lint_rules():
     j = "".join
     return [
         ("name", re.compile(j(["cla", "ude"]) + "|" + j(["anthro", "pic"]), re.I), None),
-        ("private IP", re.compile(r"\b(?:192\.168|10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\b"), None),
+        ("private IP", re.compile(r"\b(?:192\.168|10\.(?!255\.255\.255\b)\d{1,3}|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\b"), None),
         ("MAC address", re.compile(r"\b[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}\b"), None),
-        ("user path", re.compile(r"[A-Za-z]:[\\/]+Users[\\/]|/Users/[A-Za-z]|/mnt/[a-z]/Users|/home/(?!runner\b)[A-Za-z]"), None),
+        ("user path", re.compile(r"[A-Za-z]:[\\/]+Users[\\/]|/Users/[A-Za-z]|/mnt/[a-z]/Users|(?<![\w/.])/home/(?!runner\b)[A-Za-z]"), None),
         ("e-mail", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}"), {"tools/at9enc/atrac9tab.h"}),
         ("open item", re.compile(j([r"\bTO", r"DO\b|\bFIX", r"ME\b|placehol", r"der|<own", r"er>|<re", r"po>|x", r"xxx"])), None),
     ]

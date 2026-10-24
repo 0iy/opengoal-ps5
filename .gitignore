@@ -48,5 +48,5 @@ node_modules/
 .cache/
 shader_cache/
 nul
-/docs/assistant_memory/
 /.deployed_sha1
+/docs/assistant_memory/

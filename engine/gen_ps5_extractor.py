@@ -8,6 +8,7 @@ clang wrapper. Translation units already in libgk.a are skipped; the rest go to 
 import json
 import os
 import shlex
+import subprocess
 import sys
 
 HOME = os.path.expanduser("~")
@@ -87,6 +88,11 @@ def objs_of(cmd_file):
 def main():
     os.makedirs(OUT, exist_ok=True)
     commands = json.load(open(os.path.join(CFG, "compile_commands.json")))
+    for target, name in (("extractor", "ext_cmds.txt"), ("gk", "gk_cmds.txt")):  # command lists of the host build (needs ~/jak_cfg)
+        path = os.path.join(HOME, name)
+        if not os.path.exists(path):
+            with open(path, "w") as f:
+                subprocess.run(["ninja", "-t", "commands", target], cwd=CFG, stdout=f, check=True)
     need = objs_of(os.path.join(HOME, "ext_cmds.txt"))
     have = objs_of(os.path.join(HOME, "gk_cmds.txt"))
     rules, objects, seen = [], [], set()

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# usage: build.sh main.c out.elf [extra libs]
+# usage: build.sh source.c out.elf [extra libs]
 set -e
 export PATH="/c/Program Files/LLVM/bin:$PATH"
 SDK="${PS5_SDK:?set PS5_SDK to your ps5-payload-sdk install}"

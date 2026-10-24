@@ -35,7 +35,7 @@ def _s(name, t):
 
 
 # secs = wall seconds of the run; shots = fixed seconds after (game) process start; warm = fraction of 3 s samples skipped as warm-up.
-# jak3 is driven by rplay.py (new process on Play), so its shot times are relative to the game process: adjust in tests/qa/scenarios.json.
+# jak3 is driven by rplay.py (new process on Play), so its shot times are relative to the game process: adjust in a scenarios.json file in tests/qa.
 SCENARIOS = {
     "quick": {
         "jak1": {"secs": 30, "warm": 0.4, "shots": [_s("boot", 6), _s("title", 14), _s("play", 26)]},

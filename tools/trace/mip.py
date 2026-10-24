@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""glGenerateMipmap cost split from a ps5 trace (agent mipcost).  usage: ps5 perf trace mip trace.bin [trace.bin ...]
+"""glGenerateMipmap cost split from a ps5 trace.  usage: ps5 perf trace mip trace.bin [trace.bin ...]
 Per frame on the render thread: total glGenerateMipmap time (event 206), the part spent in backpressure waits (112)
 inside those calls, the remaining CPU, batch submits (111, of which async-collect 103), blit draws (122 inside the calls),
 call count; plus, if the trace has them, driver events 137 (ps5_generate_mipmap), 138 (ps5_blit_gpu_color),

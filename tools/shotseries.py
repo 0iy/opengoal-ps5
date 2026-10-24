@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """shotseries.py: request screenshots from the running app and fetch them over FTP. Defines functions and a CLI only; it connects
-to the console only when you call a command (the main session does that, one at a time).
+to the console only when you call a command.
 
 Mechanism (same as `ps5 shot`): /data/opengoal/config/shot.txt holds space-separated seconds-after-start; the app writes
 /data/opengoal/log/shot0.ppm, shot1.ppm ... one per listed time and logs 'captured'. shot.txt is read at app start, so write it BEFORE launch.
