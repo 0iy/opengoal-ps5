@@ -1,0 +1,2259 @@
+diff --git a/common/util/FileUtil.cpp b/common/util/FileUtil.cpp
+index 932a34f4..5fe48eb5 100644
+--- a/common/util/FileUtil.cpp
++++ b/common/util/FileUtil.cpp
+@@ -1,828 +1,832 @@
+-/*!
+- * @file FileUtil.cpp
+- * Utility functions for reading and writing files.
+- */
+-
+-#include "FileUtil.h"
+-
+-#include <algorithm>
+-#include <cstdio> /* defines FILENAME_MAX */
+-#include <cstdlib>
+-#include <fstream>
+-#include <iostream>
+-#include <sstream>
+-
+-#include "BinaryWriter.h"
+-
+-#include "common/common_types.h"
+-#include "common/util/BinaryReader.h"
+-#include "common/util/string_util.h"
+-#include "common/util/unicode_util.h"
+-
+-// This disables the use of PCLMULQDQ which is probably ok, but let's just be safe and disable it
+-// because nobody will care if png compression is 10% slower.
+-#define FPNG_NO_SSE 1
+-#include "fmt/format.h"
+-#include "third-party/fpng/fpng.cpp"
+-#include "third-party/fpng/fpng.h"
+-#include "third-party/lzokay/lzokay.hpp"
+-
+-#ifdef _WIN32
+-#define NOMINMAX
+-#define WIN32_LEAN_AND_MEAN
+-#include <Windows.h>
+-#else
+-#include <cstring>
+-#include <unistd.h>
+-#endif
+-#include "common/log/log.h"
+-#include "common/util/Assert.h"
+-
+-#ifdef __APPLE__
+-#include <crt_externs.h>
+-#include <limits.h>
+-
+-#include "mach-o/dyld.h"
+-#endif
+-
+-namespace file_util {
+-fs::path get_user_home_dir() {
+-#ifdef _WIN32
+-  // NOTE - on older systems, this may case issues if it cannot be found!
+-  std::string home_dir = get_env("USERPROFILE");
+-  return fs::path(home_dir);
+-#else
+-  std::string home_dir = get_env("HOME");
+-  return fs::path(home_dir);
+-#endif
+-}
+-
+-struct {
+-  bool initialized = false;
+-  fs::path path_to_data_folder;
+-  fs::path user_config_dir_override = "";
+-  // by default - if the config dir is overridden, we don't use the default save location
+-  bool use_overridden_config_dir_for_saves = true;
+-} g_file_path_info;
+-
+-fs::path get_user_config_dir() {
+-  fs::path config_base_path;
+-#ifdef _WIN32
+-  auto config_base_dir = get_env("APPDATA");
+-  config_base_path = fs::path(config_base_dir);
+-#elif __linux
+-  // Docs - https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
+-  // Prefer XDG_CONFIG_HOME if available
+-  auto config_base_dir = get_env("XDG_CONFIG_HOME");
+-  if (config_base_dir.empty()) {
+-    config_base_path = get_user_home_dir() / ".config";
+-  } else {
+-    config_base_path = fs::path(config_base_dir);
+-  }
+-#elif __APPLE__
+-  auto config_base_dir = get_env("HOME");
+-  config_base_path = fs::path(config_base_dir) / "Library" / "Application Support";
+-#endif
+-  return config_base_path / "OpenGOAL";
+-}
+-
+-fs::path get_user_settings_dir(GameVersion game_version) {
+-  auto game_version_name = game_version_names[game_version];
+-  auto config_dir = get_user_config_dir();
+-  if (!g_file_path_info.user_config_dir_override.empty()) {
+-    config_dir = g_file_path_info.user_config_dir_override / "OpenGOAL";
+-  }
+-  return config_dir / game_version_name / "settings";
+-}
+-
+-fs::path get_user_memcard_dir(GameVersion game_version) {
+-  auto game_version_name = game_version_names[game_version];
+-  auto config_dir = get_user_config_dir();
+-  if (!g_file_path_info.user_config_dir_override.empty() &&
+-      g_file_path_info.use_overridden_config_dir_for_saves) {
+-    config_dir = g_file_path_info.user_config_dir_override / "OpenGOAL";
+-  }
+-  return config_dir / game_version_name / "saves";
+-}
+-
+-fs::path get_user_screenshots_dir(GameVersion game_version) {
+-  auto game_version_name = game_version_names[game_version];
+-  auto config_dir = get_user_config_dir();
+-  if (!g_file_path_info.user_config_dir_override.empty()) {
+-    config_dir = g_file_path_info.user_config_dir_override / "OpenGOAL";
+-  }
+-  return config_dir / game_version_name / "screenshots";
+-}
+-
+-fs::path get_user_misc_dir(GameVersion game_version) {
+-  auto game_version_name = game_version_names[game_version];
+-  auto config_dir = get_user_config_dir();
+-  if (!g_file_path_info.user_config_dir_override.empty()) {
+-    config_dir = g_file_path_info.user_config_dir_override / "OpenGOAL";
+-  }
+-  return config_dir / game_version_name / "misc";
+-}
+-
+-fs::path get_user_features_dir(GameVersion game_version) {
+-  auto game_version_name = game_version_names[game_version];
+-  auto config_dir = get_user_config_dir();
+-  if (!g_file_path_info.user_config_dir_override.empty()) {
+-    config_dir = g_file_path_info.user_config_dir_override / "OpenGOAL";
+-  }
+-  auto path = config_dir / game_version_name / "features";
+-  file_util::create_dir_if_needed(path);
+-  return path;
+-}
+-
+-fs::path g_iso_data_directory = "";
+-
+-/*!
+- * Get the path to the current executable.
+- */
+-std::string get_current_executable_path() {
+-#ifdef _WIN32
+-  // NOTE - MAX_PATH is kinda wrong here as you can have a path longer than 260 in windows
+-  wchar_t path[MAX_PATH];
+-  GetModuleFileNameW(NULL, path, MAX_PATH);
+-  std::string file_path = wide_string_to_utf8_string(path);
+-  if (file_path.rfind("\\\\?\\", 0) == 0) {
+-    return file_path.substr(4);
+-  }
+-  return file_path;
+-#elif __linux
+-  char buffer[FILENAME_MAX + 1];
+-  auto len = readlink("/proc/self/exe", buffer,
+-                      FILENAME_MAX);  // /proc/self acts like a "virtual folder" containing
+-  // information about the current process
+-  buffer[len] = '\0';
+-  return std::string(buffer);
+-#elif __APPLE__
+-  char buffer[PATH_MAX];
+-  uint32_t bufsize = sizeof(buffer);
+-  if (_NSGetExecutablePath(buffer, &bufsize) != 0) {
+-    lg::warn("Could not get executable path, trying with _NSGetArgv()[0] instead.");
+-    auto argv = *_NSGetArgv();
+-    return std::string(argv[0]);
+-  }
+-  return std::string(buffer);
+-#endif
+-}
+-
+-std::optional<std::string> try_get_project_path_from_path(const std::string& path) {
+-  std::string::size_type pos =
+-      std::string(path).rfind("jak-project");  // Strip file path down to /jak-project/ directory
+-  if (pos == std::string::npos) {
+-    return {};
+-  }
+-  return std::string(path).substr(
+-      0, pos + 11);  // + 12 to include "/jak-project" in the returned filepath
+-}
+-
+-/*!
+- * See if the current executable is somewhere in jak-project/. If so, return the path to jak-project
+- */
+-std::optional<std::string> try_get_jak_project_path() {
+-  return try_get_project_path_from_path(get_current_executable_path());
+-}
+-
+-std::optional<fs::path> try_get_data_dir(bool skip_logs) {
+-  fs::path my_path = get_current_executable_path();
+-  if (!skip_logs) {
+-    lg::debug("Current executable directory - {}", my_path.string());
+-  }
+-  auto data_dir = my_path.parent_path() / "data";
+-  if (fs::exists(data_dir) && fs::is_directory(data_dir)) {
+-    return std::make_optional(data_dir);
+-  } else {
+-    return {};
+-  }
+-}
+-
+-bool setup_project_path(std::optional<fs::path> project_path_override, bool skip_logs) {
+-  if (g_file_path_info.initialized) {
+-    return true;
+-  }
+-
+-  if (project_path_override) {
+-    g_file_path_info.path_to_data_folder = fs::absolute(project_path_override.value());
+-    g_file_path_info.initialized = true;
+-    if (!skip_logs) {
+-      lg::debug("Using explicitly set project path: {}",
+-                g_file_path_info.path_to_data_folder.string());
+-    }
+-    return true;
+-  }
+-
+-  auto data_path = try_get_data_dir(skip_logs);
+-  if (data_path) {
+-    g_file_path_info.path_to_data_folder = *data_path;
+-    g_file_path_info.initialized = true;
+-    if (!skip_logs) {
+-      lg::debug("Using data path: {}", data_path->string());
+-    }
+-    return true;
+-  }
+-
+-  auto development_repo_path = try_get_jak_project_path();
+-  if (development_repo_path) {
+-    g_file_path_info.path_to_data_folder = *development_repo_path;
+-    g_file_path_info.initialized = true;
+-    if (!skip_logs) {
+-      lg::debug("Using development repo path: {}", *development_repo_path);
+-    }
+-    return true;
+-  }
+-
+-  lg::error("Failed to initialize project path.");
+-  return false;
+-}
+-
+-void override_user_config_dir(fs::path user_config_dir_override,
+-                              bool use_overridden_config_dir_for_saves) {
+-  g_file_path_info.user_config_dir_override = user_config_dir_override;
+-  g_file_path_info.use_overridden_config_dir_for_saves = use_overridden_config_dir_for_saves;
+-}
+-
+-fs::path get_jak_project_dir() {
+-  ASSERT(g_file_path_info.initialized);
+-  return g_file_path_info.path_to_data_folder;
+-}
+-
+-fs::path get_iso_dir_for_game(GameVersion game_version) {
+-  if (!g_iso_data_directory.empty()) {
+-    return g_iso_data_directory;
+-  }
+-  // Find the location based on the game version
+-  std::string expected_subdir = "jak1";
+-  if (game_version == GameVersion::Jak2) {
+-    expected_subdir = "jak2";
+-  } else if (game_version == GameVersion::Jak3) {
+-    expected_subdir = "jak3";
+-  }
+-  const auto temp_dir = get_jak_project_dir() / "iso_data" / expected_subdir;
+-  if (fs::exists(temp_dir)) {
+-    g_iso_data_directory = temp_dir;
+-  }
+-  return g_iso_data_directory;
+-}
+-
+-void set_iso_data_dir(const fs::path& directory) {
+-  g_iso_data_directory = directory;
+-}
+-
+-std::string get_file_path(const std::vector<std::string>& input) {
+-  // TODO - clean this behaviour up, it causes unexpected behaviour when working with files
+-  // the project path should be explicitly provided by whatever if needed
+-  // TEMP HACK
+-  // - if the provided path is absolute, don't add the project path
+-  if (input.size() == 1 && fs::path(input.at(0)).is_absolute()) {
+-    return input.at(0);
+-  }
+-
+-  auto current_path = file_util::get_jak_project_dir();
+-  for (auto& str : input) {
+-    current_path /= str;
+-  }
+-
+-  return current_path.string();
+-}
+-
+-bool create_dir_if_needed(const fs::path& path) {
+-  if (!fs::is_directory(path)) {
+-    fs::create_directories(path);
+-    return true;
+-  }
+-  return false;
+-}
+-
+-// TODO - explodes if the file path is invalid
+-bool create_dir_if_needed_for_file(const std::string& path) {
+-  return create_dir_if_needed_for_file(fs::path(path));
+-}
+-
+-// TODO - explodes if the file path is invalid
+-bool create_dir_if_needed_for_file(const fs::path& path) {
+-  return fs::create_directories(path.parent_path());
+-}
+-
+-void write_binary_file(const fs::path& name, const void* data, size_t size) {
+-  FILE* fp = file_util::open_file(name.string().c_str(), "wb");
+-  if (!fp) {
+-    throw std::runtime_error("couldn't open file " + name.string());
+-  }
+-
+-  if (size == 0) {
+-    // nothing to write, just 'touch' the file
+-    fclose(fp);
+-    return;
+-  }
+-
+-  if (fwrite(data, size, 1, fp) != 1) {
+-    fclose(fp);
+-    throw std::runtime_error("couldn't write file " + name.string());
+-  }
+-
+-  fclose(fp);
+-}
+-
+-void write_binary_file(const std::string& name, const void* data, size_t size) {
+-  write_binary_file(fs::path(name), data, size);
+-}
+-
+-void write_rgba_png(const fs::path& name, void* data, int w, int h) {
+-  auto flags = 0;
+-
+-  auto ok = fpng::fpng_encode_image_to_file(name.string().c_str(), data, w, h, 4, flags);
+-
+-  if (!ok) {
+-    throw std::runtime_error("couldn't save png file " + name.string());
+-  }
+-}
+-
+-void write_text_file(const std::string& file_name, const std::string& text) {
+-  write_text_file(fs::path(file_name), text);
+-}
+-
+-void write_text_file(const fs::path& file_name, const std::string& text) {
+-  FILE* fp = file_util::open_file(file_name.string().c_str(), "w");
+-  if (!fp) {
+-    lg::error("Failed to fopen {}\n", file_name.string());
+-    throw std::runtime_error("Failed to open file");
+-  }
+-  fprintf(fp, "%s\n", text.c_str());
+-  fclose(fp);
+-}
+-std::vector<uint8_t> read_binary_file(const std::string& filename) {
+-  return read_binary_file(fs::path(filename));
+-}
+-
+-std::vector<uint8_t> read_binary_file(const fs::path& path) {
+-  // make sure file exists and isn't a directory
+-
+-  auto status = fs::status(path);
+-
+-  if (!fs::exists(status)) {
+-    throw std::runtime_error(
+-        fmt::format("File {} cannot be opened: does not exist.", path.string()));
+-  }
+-
+-  if (status.type() != fs::file_type::regular && status.type() != fs::file_type::symlink) {
+-    throw std::runtime_error(
+-        fmt::format("File {} cannot be opened: not a regular file or symlink.", path.string()));
+-  }
+-
+-  auto fp = file_util::open_file(path.string().c_str(), "rb");
+-  if (!fp)
+-    throw std::runtime_error("File " + path.string() +
+-                             " cannot be opened: " + std::string(strerror(errno)));
+-  fseek(fp, 0, SEEK_END);
+-  auto len = ftell(fp);
+-  if (len == 0) {
+-    fclose(fp);
+-    return {};
+-  }
+-  rewind(fp);
+-
+-  std::vector<uint8_t> data;
+-  data.resize(len);
+-
+-  if (fread(data.data(), len, 1, fp) != 1) {
+-    fclose(fp);
+-    throw std::runtime_error("File " + path.string() + " cannot be read");
+-  }
+-  fclose(fp);
+-
+-  return data;
+-}
+-
+-std::string read_text_file(const fs::path& path) {
+-  fs::ifstream file(path);
+-  if (!file.good()) {
+-    throw std::runtime_error("couldn't open " + path.string());
+-  }
+-  std::stringstream ss;
+-  ss << file.rdbuf();
+-  return ss.str();
+-}
+-
+-std::string read_text_file(const std::string& path) {
+-  return read_text_file(fs::path(path));
+-}
+-
+-bool is_printable_char(char c) {
+-  return c >= ' ' && c <= '~';
+-}
+-
+-std::string combine_path(const std::string& parent, const std::string& child) {
+-  return parent + "/" + child;
+-}
+-
+-bool file_exists(const std::string& path) {
+-  return fs::exists(path);
+-}
+-
+-std::string base_name(const std::string& filename) {
+-  size_t pos = 0;
+-  ASSERT(!filename.empty());
+-  for (size_t i = filename.size() - 1; i-- > 0;) {
+-    if (filename.at(i) == '/' || filename.at(i) == '\\') {
+-      pos = (i + 1);
+-      break;
+-    }
+-  }
+-  return filename.substr(pos);
+-}
+-
+-std::string base_name_no_ext(const std::string& filename) {
+-  size_t pos = 0;
+-  ASSERT(!filename.empty());
+-  for (size_t i = filename.size() - 1; i-- > 0;) {
+-    if (filename.at(i) == '/' || filename.at(i) == '\\') {
+-      pos = (i + 1);
+-      break;
+-    }
+-  }
+-  std::string file_name = filename.substr(pos);
+-  return file_name.substr(0, file_name.find_last_of('.'));
+-  ;
+-}
+-
+-std::string split_path_at(const fs::path& path, const std::vector<std::string>& folders) {
+-  std::string split_str = "";
+-  for (const auto& folder : folders) {
+-#ifdef _WIN32
+-    split_str += folder + "\\";
+-#else
+-    split_str += folder + "/";
+-#endif
+-  }
+-  const auto& path_str = path.string();
+-  return path_str.substr(path_str.find(split_str) + split_str.length());
+-}
+-
+-std::string convert_to_unix_path_separators(const std::string& path) {
+-#ifdef _WIN32
+-  std::string copy = path;
+-  std::replace(copy.begin(), copy.end(), '\\', '/');
+-  return copy;
+-#else
+-  return path;
+-#endif
+-}
+-
+-/*!
+- * Convert an animation name to ISO name.
+- * The animation name is a bunch of dash separated words.
+- * The resulting ISO name has the same first two chars as the animation name, and one char from each
+- * remaining word. Once there are no more words but remaining chars in the ISO name, the ith extra
+- * char is the i+1 th char of the last word. A word ending in a number (or just a number) is turned
+- * into the number. The word "resolution" becomes z. The word "accept" becomes y. The word "reject"
+- * becomes n. Other words become the first char of the word. The result is uppercased and the file
+- * extension is STR Examples (animation name and disc file name, not ISO name):
+- *  green-sagecage-outro-beat-boss-enough-cells -> GRSOBBEC.STR
+- *  swamp-tetherrock-swamprockexplode-4 -> SWTS4.STR
+- *  minershort-resolution-1-orbs -> MIZ1ORBS.STR
+- */
+-void ISONameFromAnimationName(char* dst, const char* src) {
+-  // The Animation Name is a bunch of words separated by dashes
+-
+-  // copy first two chars of the first word exactly
+-  dst[0] = src[0];
+-  dst[1] = src[1];
+-  s32 i = 2;  // 2 chars added to dst.
+-
+-  // skip ahead to the first dash (or \0 if there's no dashes)
+-  const char* src_ptr = src;
+-  while (*src_ptr && *src_ptr != '-') {
+-    src_ptr++;
+-  }
+-
+-  // the points to the next dash (or \0 if there's none).
+-  const char* next_ptr = src_ptr;
+-  if (*src_ptr) {
+-    // loop over words (next_ptr points to dash before word, i counts chars in dest)
+-    while (src_ptr = next_ptr + 1, i < 8) {
+-      // scan next_ptr forward to next dash
+-      next_ptr = src_ptr;
+-      while (*next_ptr && *next_ptr != '-') {
+-        next_ptr++;
+-      }
+-
+-      // there's no next word, so break (the current word will be handled there)
+-      if (!*next_ptr)
+-        break;
+-
+-      // add a char for the current word:
+-      char char_to_add;
+-      if (next_ptr[-1] < '0' || next_ptr[-1] > '9') {
+-        // word doesn't end in a number.
+-
+-        // some special case words map to special letters (likely to avoid animation name conflicts)
+-        if (next_ptr - src_ptr == 10 && !memcmp(src_ptr, "resolution", 10)) {
+-          // NOTE : jak 2 also allows "res" here but that doesn't work properly.
+-          char_to_add = 'z';
+-        } else if (next_ptr - src_ptr == 6 && !memcmp(src_ptr, "accept", 6)) {
+-          char_to_add = 'y';
+-        } else if (next_ptr - src_ptr == 6 && !memcmp(src_ptr, "reject", 6)) {
+-          char_to_add = 'n';
+-        } else if (next_ptr - src_ptr == 5 && !memcmp(src_ptr, "keira", 5)) {
+-          // NOTE : this was added in jak 2. it's safe to use in jak 1 since she was referred to as
+-          // "assistant" there
+-          char_to_add = 'i';
+-        } else {
+-          // not a special case, just take the first letter.
+-          char_to_add = *src_ptr;
+-        }
+-      } else {
+-        // the current word ends in a number, just use this number (I think usually the whole word
+-        // is just a number)
+-        char_to_add = next_ptr[-1];
+-      }
+-
+-      dst[i++] = char_to_add;
+-    }
+-
+-    // here we ran out of room in dest, or words in source.
+-    // if there's still room in dest and chars in source, just add them
+-    while (*src_ptr && (i < 8)) {
+-      dst[i] = *src_ptr;
+-      src_ptr++;
+-      i++;
+-    }
+-  }
+-
+-  // pad with spaces (for ISO Name)
+-  while (i < 8) {
+-    dst[i++] = ' ';
+-  }
+-
+-  // upper case
+-  for (i = 0; i < 8; i++) {
+-    if (dst[i] >= 'a' && dst[i] <= 'z') {
+-      dst[i] -= 0x20;
+-    }
+-  }
+-
+-  // append file extension
+-  strcpy(dst + 8, "STR");
+-}
+-
+-/*!
+- * Convert file name to "ISO Name"
+- * ISO names are upper case and 12 bytes long.
+- * xxxxxxxxyyy0
+- *
+- * x - uppercase letter of file name, or space
+- * y - uppercase letter of file extension, or space
+- * 0 - null terminator (\0, not the character zero)
+- */
+-void MakeISOName(char* dst, const char* src) {
+-  int i = 0;
+-  const char* src_ptr = src;
+-  char* dst_ptr = dst;
+-
+-  // copy name and upper case
+-  while ((i < 8) && (*src_ptr) && (*src_ptr != '.')) {
+-    char c = *src_ptr;
+-    src_ptr++;
+-    if (('`' < c) && (c < '{')) {  // lower case
+-      c -= 0x20;
+-    }
+-    *dst_ptr = c;
+-    dst_ptr++;
+-    i++;
+-  }
+-
+-  // pad out name with spaces
+-  while (i < 8) {
+-    *dst_ptr = ' ';
+-    dst_ptr++;
+-    i++;
+-  }
+-
+-  // increment past period
+-  if (*src_ptr == '.')
+-    src_ptr++;
+-
+-  // same for extension
+-  while (i < 11 && (*src_ptr)) {
+-    char c = *src_ptr;
+-    src_ptr++;
+-    if (('`' < c) && (c < '{')) {  // lower case
+-      c -= 0x20;
+-    }
+-    *dst_ptr = c;
+-    dst_ptr++;
+-    i++;
+-  }
+-
+-  while (i < 11) {
+-    *dst_ptr = ' ';
+-    dst_ptr++;
+-    i++;
+-  }
+-  *dst_ptr = 0;
+-}
+-
+-void assert_file_exists(const char* path, const char* error_message) {
+-  if (!fs::exists(path)) {
+-    ASSERT_MSG(false, fmt::format("File {} was not found: {}", path, error_message));
+-  }
+-}
+-
+-/*!
+- * Check if the given DGO header (or entire file) is compressed.
+- */
+-bool dgo_header_is_compressed(const std::vector<u8>& data) {
+-  const char compressed_header[] = "oZlB";
+-  bool is_compressed = true;
+-  for (int i = 0; i < 4; i++) {
+-    if (compressed_header[i] != data.at(i)) {
+-      is_compressed = false;
+-    }
+-  }
+-  return is_compressed;
+-}
+-
+-/*!
+- * Decompress a DGO. Resulting data will start at the DGO header.
+- */
+-std::vector<u8> decompress_dgo(const std::vector<u8>& data_in) {
+-  constexpr int MAX_CHUNK_SIZE = 0x8000;
+-  BinaryReader compressed_reader(data_in);
+-  // seek past oZlB
+-  compressed_reader.ffwd(4);
+-  std::size_t decompressed_size = compressed_reader.read<uint32_t>();
+-  std::vector<uint8_t> decompressed_data;
+-  decompressed_data.resize(decompressed_size);
+-  size_t output_offset = 0;
+-  while (true) {
+-    // seek past alignment bytes and read the next chunk size
+-    uint32_t chunk_size = 0;
+-    while (!chunk_size) {
+-      chunk_size = compressed_reader.read<uint32_t>();
+-    }
+-
+-    if (chunk_size < MAX_CHUNK_SIZE) {
+-      std::size_t bytes_written = 0;
+-      lzokay::EResult ok = lzokay::decompress(
+-          compressed_reader.here(), chunk_size, decompressed_data.data() + output_offset,
+-          decompressed_data.size() - output_offset, bytes_written);
+-      ASSERT(ok == lzokay::EResult::Success);
+-      compressed_reader.ffwd(chunk_size);
+-      output_offset += bytes_written;
+-    } else {
+-      // nope - sometimes chunk_size is bigger than MAX, but we should still use max.
+-      //        ASSERT(chunk_size == MAX_CHUNK_SIZE);
+-      memcpy(decompressed_data.data() + output_offset, compressed_reader.here(), MAX_CHUNK_SIZE);
+-      compressed_reader.ffwd(MAX_CHUNK_SIZE);
+-      output_offset += MAX_CHUNK_SIZE;
+-    }
+-
+-    if (output_offset >= decompressed_size)
+-      break;
+-    while (compressed_reader.get_seek() % 4) {
+-      compressed_reader.ffwd(1);
+-    }
+-  }
+-
+-  return decompressed_data;
+-}
+-
+-FILE* open_file(const fs::path& path, const std::string& mode) {
+-#ifdef _WIN32
+-  return _wfopen(path.wstring().c_str(), std::wstring(mode.begin(), mode.end()).c_str());
+-#else
+-  return fopen(path.string().c_str(), mode.c_str());
+-#endif
+-}
+-
+-std::vector<fs::path> find_files_in_dir(const fs::path& dir, const std::regex& pattern) {
+-  std::vector<fs::path> files = {};
+-  for (auto& p : fs::directory_iterator(dir)) {
+-    if (p.is_regular_file()) {
+-      if (std::regex_match(p.path().filename().string(), pattern)) {
+-        files.push_back(p.path());
+-      }
+-    }
+-  }
+-  return files;
+-}
+-
+-std::vector<fs::path> find_files_recursively(const fs::path& base_dir, const std::regex& pattern) {
+-  std::vector<fs::path> files = {};
+-  if (!fs::exists(base_dir)) {
+-    return files;
+-  }
+-  for (auto& p : fs::recursive_directory_iterator(base_dir)) {
+-    if (p.is_regular_file()) {
+-      if (std::regex_match(p.path().filename().string(), pattern)) {
+-        files.push_back(p.path());
+-      }
+-    }
+-  }
+-  return files;
+-}
+-
+-std::vector<fs::path> find_directories_in_dir(const fs::path& base_dir) {
+-  std::vector<fs::path> dirs = {};
+-  for (auto& p : fs::recursive_directory_iterator(base_dir)) {
+-    if (p.is_directory()) {
+-      dirs.push_back(p.path());
+-    }
+-  }
+-  return dirs;
+-}
+-
+-std::vector<fs::path> sort_filepaths(const std::vector<fs::path>& paths, const bool aescending) {
+-  std::vector<std::string> paths_as_strings = {};
+-  for (const auto& path : paths) {
+-    paths_as_strings.push_back(path.string());
+-  }
+-  std::sort(paths_as_strings.begin(), paths_as_strings.end(),
+-            [aescending](const std::string& a, const std::string& b) {
+-              if (aescending) {
+-                return a < b;
+-              } else {
+-                return a > b;
+-              }
+-            });
+-  std::vector<fs::path> sorted_paths = {};
+-  for (const auto& path : paths_as_strings) {
+-    sorted_paths.push_back(fs::path(path));
+-  }
+-  return sorted_paths;
+-}
+-
+-void copy_file(const fs::path& src, const fs::path& dst) {
+-  // Check that the src path exists
+-  if (!fs::exists(src)) {
+-    throw std::runtime_error(fmt::format("Cannot copy '{}', path does not exist", src.string()));
+-  }
+-  // Ensure the directory can be copied into
+-  if (!fs::exists(dst.parent_path()) && !create_dir_if_needed_for_file(dst)) {
+-    throw std::runtime_error(fmt::format(
+-        "Cannot copy '{}', couldn't make directory to copy into '{}'", src.string(), dst.string()));
+-  }
+-  fs::copy_file(src, dst, fs::copy_options::overwrite_existing);
+-}
+-
+-std::string make_screenshot_filepath(const GameVersion game_version, const std::string& name) {
+-  std::string file_name;
+-  if (name.empty()) {
+-    file_name = fmt::format("{}.png", str_util::current_local_timestamp_no_colons());
+-  } else {
+-    file_name = fmt::format("{}.png", name);
+-  }
+-  const auto file_path = get_user_screenshots_dir(game_version) / file_name;
+-  file_util::create_dir_if_needed_for_file(file_path);
+-  return file_path.string();
+-}
+-
+-std::string get_majority_file_line_endings(const std::string& file_contents) {
+-  size_t lf_count = 0;
+-  size_t crlf_count = 0;
+-
+-  for (size_t i = 0; i < file_contents.size(); ++i) {
+-    if (file_contents[i] == '\n') {
+-      if (i > 0 && file_contents[i - 1] == '\r') {
+-        crlf_count++;
+-      } else {
+-        lf_count++;
+-      }
+-    }
+-  }
+-
+-  if (crlf_count > lf_count) {
+-    return "\r\n";
+-  }
+-  return "\n";
+-}
+-
+-std::pair<int, std::string> get_majority_file_line_endings_and_count(
+-    const std::string& file_contents) {
+-  size_t lf_count = 0;
+-  size_t crlf_count = 0;
+-
+-  for (size_t i = 0; i < file_contents.size(); ++i) {
+-    if (file_contents[i] == '\n') {
+-      if (i > 0 && file_contents[i - 1] == '\r') {
+-        crlf_count++;
+-      } else {
+-        lf_count++;
+-      }
+-    }
+-  }
+-
+-  if (crlf_count > lf_count) {
+-    return {lf_count + crlf_count, "\r\n"};
+-  }
+-  return {lf_count + crlf_count, "\n"};
+-}
+-
+-bool is_dir_in_dir(const fs::path& parent, const fs::path& child) {
+-  // Check if the parent path is a prefix of the child path
+-  return child.has_parent_path() && child.parent_path().lexically_relative(parent) == fs::path(".");
+-}
+-
+-}  // namespace file_util
++/*!
++ * @file FileUtil.cpp
++ * Utility functions for reading and writing files.
++ */
++
++#include "FileUtil.h"
++
++#include <algorithm>
++#include <cstdio> /* defines FILENAME_MAX */
++#include <cstdlib>
++#include <fstream>
++#include <iostream>
++#include <sstream>
++
++#include "BinaryWriter.h"
++
++#include "common/common_types.h"
++#include "common/util/BinaryReader.h"
++#include "common/util/string_util.h"
++#include "common/util/unicode_util.h"
++
++// This disables the use of PCLMULQDQ which is probably ok, but let's just be safe and disable it
++// because nobody will care if png compression is 10% slower.
++#define FPNG_NO_SSE 1
++#include "fmt/format.h"
++#include "third-party/fpng/fpng.cpp"
++#include "third-party/fpng/fpng.h"
++#include "third-party/lzokay/lzokay.hpp"
++
++#ifdef _WIN32
++#define NOMINMAX
++#define WIN32_LEAN_AND_MEAN
++#include <Windows.h>
++#else
++#include <cstring>
++#include <unistd.h>
++#endif
++#include "common/log/log.h"
++#include "common/util/Assert.h"
++
++#ifdef __APPLE__
++#include <crt_externs.h>
++#include <limits.h>
++
++#include "mach-o/dyld.h"
++#endif
++
++namespace file_util {
++fs::path get_user_home_dir() {
++#ifdef _WIN32
++  // NOTE - on older systems, this may case issues if it cannot be found!
++  std::string home_dir = get_env("USERPROFILE");
++  return fs::path(home_dir);
++#else
++  std::string home_dir = get_env("HOME");
++  return fs::path(home_dir);
++#endif
++}
++
++struct {
++  bool initialized = false;
++  fs::path path_to_data_folder;
++  fs::path user_config_dir_override = "";
++  // by default - if the config dir is overridden, we don't use the default save location
++  bool use_overridden_config_dir_for_saves = true;
++} g_file_path_info;
++
++fs::path get_user_config_dir() {
++  fs::path config_base_path;
++#ifdef _WIN32
++  auto config_base_dir = get_env("APPDATA");
++  config_base_path = fs::path(config_base_dir);
++#elif defined(__ps5__)
++  config_base_path = fs::path("/data/opengoal/config");
++#elif __linux
++  // Docs - https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
++  // Prefer XDG_CONFIG_HOME if available
++  auto config_base_dir = get_env("XDG_CONFIG_HOME");
++  if (config_base_dir.empty()) {
++    config_base_path = get_user_home_dir() / ".config";
++  } else {
++    config_base_path = fs::path(config_base_dir);
++  }
++#elif __APPLE__
++  auto config_base_dir = get_env("HOME");
++  config_base_path = fs::path(config_base_dir) / "Library" / "Application Support";
++#endif
++  return config_base_path / "OpenGOAL";
++}
++
++fs::path get_user_settings_dir(GameVersion game_version) {
++  auto game_version_name = game_version_names[game_version];
++  auto config_dir = get_user_config_dir();
++  if (!g_file_path_info.user_config_dir_override.empty()) {
++    config_dir = g_file_path_info.user_config_dir_override / "OpenGOAL";
++  }
++  return config_dir / game_version_name / "settings";
++}
++
++fs::path get_user_memcard_dir(GameVersion game_version) {
++  auto game_version_name = game_version_names[game_version];
++  auto config_dir = get_user_config_dir();
++  if (!g_file_path_info.user_config_dir_override.empty() &&
++      g_file_path_info.use_overridden_config_dir_for_saves) {
++    config_dir = g_file_path_info.user_config_dir_override / "OpenGOAL";
++  }
++  return config_dir / game_version_name / "saves";
++}
++
++fs::path get_user_screenshots_dir(GameVersion game_version) {
++  auto game_version_name = game_version_names[game_version];
++  auto config_dir = get_user_config_dir();
++  if (!g_file_path_info.user_config_dir_override.empty()) {
++    config_dir = g_file_path_info.user_config_dir_override / "OpenGOAL";
++  }
++  return config_dir / game_version_name / "screenshots";
++}
++
++fs::path get_user_misc_dir(GameVersion game_version) {
++  auto game_version_name = game_version_names[game_version];
++  auto config_dir = get_user_config_dir();
++  if (!g_file_path_info.user_config_dir_override.empty()) {
++    config_dir = g_file_path_info.user_config_dir_override / "OpenGOAL";
++  }
++  return config_dir / game_version_name / "misc";
++}
++
++fs::path get_user_features_dir(GameVersion game_version) {
++  auto game_version_name = game_version_names[game_version];
++  auto config_dir = get_user_config_dir();
++  if (!g_file_path_info.user_config_dir_override.empty()) {
++    config_dir = g_file_path_info.user_config_dir_override / "OpenGOAL";
++  }
++  auto path = config_dir / game_version_name / "features";
++  file_util::create_dir_if_needed(path);
++  return path;
++}
++
++fs::path g_iso_data_directory = "";
++
++/*!
++ * Get the path to the current executable.
++ */
++std::string get_current_executable_path() {
++#ifdef _WIN32
++  // NOTE - MAX_PATH is kinda wrong here as you can have a path longer than 260 in windows
++  wchar_t path[MAX_PATH];
++  GetModuleFileNameW(NULL, path, MAX_PATH);
++  std::string file_path = wide_string_to_utf8_string(path);
++  if (file_path.rfind("\\\\?\\", 0) == 0) {
++    return file_path.substr(4);
++  }
++  return file_path;
++#elif defined(__ps5__)
++  return std::string("/app0/eboot.bin");
++#elif __linux
++  char buffer[FILENAME_MAX + 1];
++  auto len = readlink("/proc/self/exe", buffer,
++                      FILENAME_MAX);  // /proc/self acts like a "virtual folder" containing
++  // information about the current process
++  buffer[len] = '\0';
++  return std::string(buffer);
++#elif __APPLE__
++  char buffer[PATH_MAX];
++  uint32_t bufsize = sizeof(buffer);
++  if (_NSGetExecutablePath(buffer, &bufsize) != 0) {
++    lg::warn("Could not get executable path, trying with _NSGetArgv()[0] instead.");
++    auto argv = *_NSGetArgv();
++    return std::string(argv[0]);
++  }
++  return std::string(buffer);
++#endif
++}
++
++std::optional<std::string> try_get_project_path_from_path(const std::string& path) {
++  std::string::size_type pos =
++      std::string(path).rfind("jak-project");  // Strip file path down to /jak-project/ directory
++  if (pos == std::string::npos) {
++    return {};
++  }
++  return std::string(path).substr(
++      0, pos + 11);  // + 12 to include "/jak-project" in the returned filepath
++}
++
++/*!
++ * See if the current executable is somewhere in jak-project/. If so, return the path to jak-project
++ */
++std::optional<std::string> try_get_jak_project_path() {
++  return try_get_project_path_from_path(get_current_executable_path());
++}
++
++std::optional<fs::path> try_get_data_dir(bool skip_logs) {
++  fs::path my_path = get_current_executable_path();
++  if (!skip_logs) {
++    lg::debug("Current executable directory - {}", my_path.string());
++  }
++  auto data_dir = my_path.parent_path() / "data";
++  if (fs::exists(data_dir) && fs::is_directory(data_dir)) {
++    return std::make_optional(data_dir);
++  } else {
++    return {};
++  }
++}
++
++bool setup_project_path(std::optional<fs::path> project_path_override, bool skip_logs) {
++  if (g_file_path_info.initialized) {
++    return true;
++  }
++
++  if (project_path_override) {
++    g_file_path_info.path_to_data_folder = fs::absolute(project_path_override.value());
++    g_file_path_info.initialized = true;
++    if (!skip_logs) {
++      lg::debug("Using explicitly set project path: {}",
++                g_file_path_info.path_to_data_folder.string());
++    }
++    return true;
++  }
++
++  auto data_path = try_get_data_dir(skip_logs);
++  if (data_path) {
++    g_file_path_info.path_to_data_folder = *data_path;
++    g_file_path_info.initialized = true;
++    if (!skip_logs) {
++      lg::debug("Using data path: {}", data_path->string());
++    }
++    return true;
++  }
++
++  auto development_repo_path = try_get_jak_project_path();
++  if (development_repo_path) {
++    g_file_path_info.path_to_data_folder = *development_repo_path;
++    g_file_path_info.initialized = true;
++    if (!skip_logs) {
++      lg::debug("Using development repo path: {}", *development_repo_path);
++    }
++    return true;
++  }
++
++  lg::error("Failed to initialize project path.");
++  return false;
++}
++
++void override_user_config_dir(fs::path user_config_dir_override,
++                              bool use_overridden_config_dir_for_saves) {
++  g_file_path_info.user_config_dir_override = user_config_dir_override;
++  g_file_path_info.use_overridden_config_dir_for_saves = use_overridden_config_dir_for_saves;
++}
++
++fs::path get_jak_project_dir() {
++  ASSERT(g_file_path_info.initialized);
++  return g_file_path_info.path_to_data_folder;
++}
++
++fs::path get_iso_dir_for_game(GameVersion game_version) {
++  if (!g_iso_data_directory.empty()) {
++    return g_iso_data_directory;
++  }
++  // Find the location based on the game version
++  std::string expected_subdir = "jak1";
++  if (game_version == GameVersion::Jak2) {
++    expected_subdir = "jak2";
++  } else if (game_version == GameVersion::Jak3) {
++    expected_subdir = "jak3";
++  }
++  const auto temp_dir = get_jak_project_dir() / "iso_data" / expected_subdir;
++  if (fs::exists(temp_dir)) {
++    g_iso_data_directory = temp_dir;
++  }
++  return g_iso_data_directory;
++}
++
++void set_iso_data_dir(const fs::path& directory) {
++  g_iso_data_directory = directory;
++}
++
++std::string get_file_path(const std::vector<std::string>& input) {
++  // TODO - clean this behaviour up, it causes unexpected behaviour when working with files
++  // the project path should be explicitly provided by whatever if needed
++  // TEMP HACK
++  // - if the provided path is absolute, don't add the project path
++  if (input.size() == 1 && fs::path(input.at(0)).is_absolute()) {
++    return input.at(0);
++  }
++
++  auto current_path = file_util::get_jak_project_dir();
++  for (auto& str : input) {
++    current_path /= str;
++  }
++
++  return current_path.string();
++}
++
++bool create_dir_if_needed(const fs::path& path) {
++  if (!fs::is_directory(path)) {
++    fs::create_directories(path);
++    return true;
++  }
++  return false;
++}
++
++// TODO - explodes if the file path is invalid
++bool create_dir_if_needed_for_file(const std::string& path) {
++  return create_dir_if_needed_for_file(fs::path(path));
++}
++
++// TODO - explodes if the file path is invalid
++bool create_dir_if_needed_for_file(const fs::path& path) {
++  return fs::create_directories(path.parent_path());
++}
++
++void write_binary_file(const fs::path& name, const void* data, size_t size) {
++  FILE* fp = file_util::open_file(name.string().c_str(), "wb");
++  if (!fp) {
++    throw std::runtime_error("couldn't open file " + name.string());
++  }
++
++  if (size == 0) {
++    // nothing to write, just 'touch' the file
++    fclose(fp);
++    return;
++  }
++
++  if (fwrite(data, size, 1, fp) != 1) {
++    fclose(fp);
++    throw std::runtime_error("couldn't write file " + name.string());
++  }
++
++  fclose(fp);
++}
++
++void write_binary_file(const std::string& name, const void* data, size_t size) {
++  write_binary_file(fs::path(name), data, size);
++}
++
++void write_rgba_png(const fs::path& name, void* data, int w, int h) {
++  auto flags = 0;
++
++  auto ok = fpng::fpng_encode_image_to_file(name.string().c_str(), data, w, h, 4, flags);
++
++  if (!ok) {
++    throw std::runtime_error("couldn't save png file " + name.string());
++  }
++}
++
++void write_text_file(const std::string& file_name, const std::string& text) {
++  write_text_file(fs::path(file_name), text);
++}
++
++void write_text_file(const fs::path& file_name, const std::string& text) {
++  FILE* fp = file_util::open_file(file_name.string().c_str(), "w");
++  if (!fp) {
++    lg::error("Failed to fopen {}\n", file_name.string());
++    throw std::runtime_error("Failed to open file");
++  }
++  fprintf(fp, "%s\n", text.c_str());
++  fclose(fp);
++}
++std::vector<uint8_t> read_binary_file(const std::string& filename) {
++  return read_binary_file(fs::path(filename));
++}
++
++std::vector<uint8_t> read_binary_file(const fs::path& path) {
++  // make sure file exists and isn't a directory
++
++  auto status = fs::status(path);
++
++  if (!fs::exists(status)) {
++    throw std::runtime_error(
++        fmt::format("File {} cannot be opened: does not exist.", path.string()));
++  }
++
++  if (status.type() != fs::file_type::regular && status.type() != fs::file_type::symlink) {
++    throw std::runtime_error(
++        fmt::format("File {} cannot be opened: not a regular file or symlink.", path.string()));
++  }
++
++  auto fp = file_util::open_file(path.string().c_str(), "rb");
++  if (!fp)
++    throw std::runtime_error("File " + path.string() +
++                             " cannot be opened: " + std::string(strerror(errno)));
++  fseek(fp, 0, SEEK_END);
++  auto len = ftell(fp);
++  if (len == 0) {
++    fclose(fp);
++    return {};
++  }
++  rewind(fp);
++
++  std::vector<uint8_t> data;
++  data.resize(len);
++
++  if (fread(data.data(), len, 1, fp) != 1) {
++    fclose(fp);
++    throw std::runtime_error("File " + path.string() + " cannot be read");
++  }
++  fclose(fp);
++
++  return data;
++}
++
++std::string read_text_file(const fs::path& path) {
++  fs::ifstream file(path);
++  if (!file.good()) {
++    throw std::runtime_error("couldn't open " + path.string());
++  }
++  std::stringstream ss;
++  ss << file.rdbuf();
++  return ss.str();
++}
++
++std::string read_text_file(const std::string& path) {
++  return read_text_file(fs::path(path));
++}
++
++bool is_printable_char(char c) {
++  return c >= ' ' && c <= '~';
++}
++
++std::string combine_path(const std::string& parent, const std::string& child) {
++  return parent + "/" + child;
++}
++
++bool file_exists(const std::string& path) {
++  return fs::exists(path);
++}
++
++std::string base_name(const std::string& filename) {
++  size_t pos = 0;
++  ASSERT(!filename.empty());
++  for (size_t i = filename.size() - 1; i-- > 0;) {
++    if (filename.at(i) == '/' || filename.at(i) == '\\') {
++      pos = (i + 1);
++      break;
++    }
++  }
++  return filename.substr(pos);
++}
++
++std::string base_name_no_ext(const std::string& filename) {
++  size_t pos = 0;
++  ASSERT(!filename.empty());
++  for (size_t i = filename.size() - 1; i-- > 0;) {
++    if (filename.at(i) == '/' || filename.at(i) == '\\') {
++      pos = (i + 1);
++      break;
++    }
++  }
++  std::string file_name = filename.substr(pos);
++  return file_name.substr(0, file_name.find_last_of('.'));
++  ;
++}
++
++std::string split_path_at(const fs::path& path, const std::vector<std::string>& folders) {
++  std::string split_str = "";
++  for (const auto& folder : folders) {
++#ifdef _WIN32
++    split_str += folder + "\\";
++#else
++    split_str += folder + "/";
++#endif
++  }
++  const auto& path_str = path.string();
++  return path_str.substr(path_str.find(split_str) + split_str.length());
++}
++
++std::string convert_to_unix_path_separators(const std::string& path) {
++#ifdef _WIN32
++  std::string copy = path;
++  std::replace(copy.begin(), copy.end(), '\\', '/');
++  return copy;
++#else
++  return path;
++#endif
++}
++
++/*!
++ * Convert an animation name to ISO name.
++ * The animation name is a bunch of dash separated words.
++ * The resulting ISO name has the same first two chars as the animation name, and one char from each
++ * remaining word. Once there are no more words but remaining chars in the ISO name, the ith extra
++ * char is the i+1 th char of the last word. A word ending in a number (or just a number) is turned
++ * into the number. The word "resolution" becomes z. The word "accept" becomes y. The word "reject"
++ * becomes n. Other words become the first char of the word. The result is uppercased and the file
++ * extension is STR Examples (animation name and disc file name, not ISO name):
++ *  green-sagecage-outro-beat-boss-enough-cells -> GRSOBBEC.STR
++ *  swamp-tetherrock-swamprockexplode-4 -> SWTS4.STR
++ *  minershort-resolution-1-orbs -> MIZ1ORBS.STR
++ */
++void ISONameFromAnimationName(char* dst, const char* src) {
++  // The Animation Name is a bunch of words separated by dashes
++
++  // copy first two chars of the first word exactly
++  dst[0] = src[0];
++  dst[1] = src[1];
++  s32 i = 2;  // 2 chars added to dst.
++
++  // skip ahead to the first dash (or \0 if there's no dashes)
++  const char* src_ptr = src;
++  while (*src_ptr && *src_ptr != '-') {
++    src_ptr++;
++  }
++
++  // the points to the next dash (or \0 if there's none).
++  const char* next_ptr = src_ptr;
++  if (*src_ptr) {
++    // loop over words (next_ptr points to dash before word, i counts chars in dest)
++    while (src_ptr = next_ptr + 1, i < 8) {
++      // scan next_ptr forward to next dash
++      next_ptr = src_ptr;
++      while (*next_ptr && *next_ptr != '-') {
++        next_ptr++;
++      }
++
++      // there's no next word, so break (the current word will be handled there)
++      if (!*next_ptr)
++        break;
++
++      // add a char for the current word:
++      char char_to_add;
++      if (next_ptr[-1] < '0' || next_ptr[-1] > '9') {
++        // word doesn't end in a number.
++
++        // some special case words map to special letters (likely to avoid animation name conflicts)
++        if (next_ptr - src_ptr == 10 && !memcmp(src_ptr, "resolution", 10)) {
++          // NOTE : jak 2 also allows "res" here but that doesn't work properly.
++          char_to_add = 'z';
++        } else if (next_ptr - src_ptr == 6 && !memcmp(src_ptr, "accept", 6)) {
++          char_to_add = 'y';
++        } else if (next_ptr - src_ptr == 6 && !memcmp(src_ptr, "reject", 6)) {
++          char_to_add = 'n';
++        } else if (next_ptr - src_ptr == 5 && !memcmp(src_ptr, "keira", 5)) {
++          // NOTE : this was added in jak 2. it's safe to use in jak 1 since she was referred to as
++          // "assistant" there
++          char_to_add = 'i';
++        } else {
++          // not a special case, just take the first letter.
++          char_to_add = *src_ptr;
++        }
++      } else {
++        // the current word ends in a number, just use this number (I think usually the whole word
++        // is just a number)
++        char_to_add = next_ptr[-1];
++      }
++
++      dst[i++] = char_to_add;
++    }
++
++    // here we ran out of room in dest, or words in source.
++    // if there's still room in dest and chars in source, just add them
++    while (*src_ptr && (i < 8)) {
++      dst[i] = *src_ptr;
++      src_ptr++;
++      i++;
++    }
++  }
++
++  // pad with spaces (for ISO Name)
++  while (i < 8) {
++    dst[i++] = ' ';
++  }
++
++  // upper case
++  for (i = 0; i < 8; i++) {
++    if (dst[i] >= 'a' && dst[i] <= 'z') {
++      dst[i] -= 0x20;
++    }
++  }
++
++  // append file extension
++  strcpy(dst + 8, "STR");
++}
++
++/*!
++ * Convert file name to "ISO Name"
++ * ISO names are upper case and 12 bytes long.
++ * xxxxxxxxyyy0
++ *
++ * x - uppercase letter of file name, or space
++ * y - uppercase letter of file extension, or space
++ * 0 - null terminator (\0, not the character zero)
++ */
++void MakeISOName(char* dst, const char* src) {
++  int i = 0;
++  const char* src_ptr = src;
++  char* dst_ptr = dst;
++
++  // copy name and upper case
++  while ((i < 8) && (*src_ptr) && (*src_ptr != '.')) {
++    char c = *src_ptr;
++    src_ptr++;
++    if (('`' < c) && (c < '{')) {  // lower case
++      c -= 0x20;
++    }
++    *dst_ptr = c;
++    dst_ptr++;
++    i++;
++  }
++
++  // pad out name with spaces
++  while (i < 8) {
++    *dst_ptr = ' ';
++    dst_ptr++;
++    i++;
++  }
++
++  // increment past period
++  if (*src_ptr == '.')
++    src_ptr++;
++
++  // same for extension
++  while (i < 11 && (*src_ptr)) {
++    char c = *src_ptr;
++    src_ptr++;
++    if (('`' < c) && (c < '{')) {  // lower case
++      c -= 0x20;
++    }
++    *dst_ptr = c;
++    dst_ptr++;
++    i++;
++  }
++
++  while (i < 11) {
++    *dst_ptr = ' ';
++    dst_ptr++;
++    i++;
++  }
++  *dst_ptr = 0;
++}
++
++void assert_file_exists(const char* path, const char* error_message) {
++  if (!fs::exists(path)) {
++    ASSERT_MSG(false, fmt::format("File {} was not found: {}", path, error_message));
++  }
++}
++
++/*!
++ * Check if the given DGO header (or entire file) is compressed.
++ */
++bool dgo_header_is_compressed(const std::vector<u8>& data) {
++  const char compressed_header[] = "oZlB";
++  bool is_compressed = true;
++  for (int i = 0; i < 4; i++) {
++    if (compressed_header[i] != data.at(i)) {
++      is_compressed = false;
++    }
++  }
++  return is_compressed;
++}
++
++/*!
++ * Decompress a DGO. Resulting data will start at the DGO header.
++ */
++std::vector<u8> decompress_dgo(const std::vector<u8>& data_in) {
++  constexpr int MAX_CHUNK_SIZE = 0x8000;
++  BinaryReader compressed_reader(data_in);
++  // seek past oZlB
++  compressed_reader.ffwd(4);
++  std::size_t decompressed_size = compressed_reader.read<uint32_t>();
++  std::vector<uint8_t> decompressed_data;
++  decompressed_data.resize(decompressed_size);
++  size_t output_offset = 0;
++  while (true) {
++    // seek past alignment bytes and read the next chunk size
++    uint32_t chunk_size = 0;
++    while (!chunk_size) {
++      chunk_size = compressed_reader.read<uint32_t>();
++    }
++
++    if (chunk_size < MAX_CHUNK_SIZE) {
++      std::size_t bytes_written = 0;
++      lzokay::EResult ok = lzokay::decompress(
++          compressed_reader.here(), chunk_size, decompressed_data.data() + output_offset,
++          decompressed_data.size() - output_offset, bytes_written);
++      ASSERT(ok == lzokay::EResult::Success);
++      compressed_reader.ffwd(chunk_size);
++      output_offset += bytes_written;
++    } else {
++      // nope - sometimes chunk_size is bigger than MAX, but we should still use max.
++      //        ASSERT(chunk_size == MAX_CHUNK_SIZE);
++      memcpy(decompressed_data.data() + output_offset, compressed_reader.here(), MAX_CHUNK_SIZE);
++      compressed_reader.ffwd(MAX_CHUNK_SIZE);
++      output_offset += MAX_CHUNK_SIZE;
++    }
++
++    if (output_offset >= decompressed_size)
++      break;
++    while (compressed_reader.get_seek() % 4) {
++      compressed_reader.ffwd(1);
++    }
++  }
++
++  return decompressed_data;
++}
++
++FILE* open_file(const fs::path& path, const std::string& mode) {
++#ifdef _WIN32
++  return _wfopen(path.wstring().c_str(), std::wstring(mode.begin(), mode.end()).c_str());
++#else
++  return fopen(path.string().c_str(), mode.c_str());
++#endif
++}
++
++std::vector<fs::path> find_files_in_dir(const fs::path& dir, const std::regex& pattern) {
++  std::vector<fs::path> files = {};
++  for (auto& p : fs::directory_iterator(dir)) {
++    if (p.is_regular_file()) {
++      if (std::regex_match(p.path().filename().string(), pattern)) {
++        files.push_back(p.path());
++      }
++    }
++  }
++  return files;
++}
++
++std::vector<fs::path> find_files_recursively(const fs::path& base_dir, const std::regex& pattern) {
++  std::vector<fs::path> files = {};
++  if (!fs::exists(base_dir)) {
++    return files;
++  }
++  for (auto& p : fs::recursive_directory_iterator(base_dir)) {
++    if (p.is_regular_file()) {
++      if (std::regex_match(p.path().filename().string(), pattern)) {
++        files.push_back(p.path());
++      }
++    }
++  }
++  return files;
++}
++
++std::vector<fs::path> find_directories_in_dir(const fs::path& base_dir) {
++  std::vector<fs::path> dirs = {};
++  for (auto& p : fs::recursive_directory_iterator(base_dir)) {
++    if (p.is_directory()) {
++      dirs.push_back(p.path());
++    }
++  }
++  return dirs;
++}
++
++std::vector<fs::path> sort_filepaths(const std::vector<fs::path>& paths, const bool aescending) {
++  std::vector<std::string> paths_as_strings = {};
++  for (const auto& path : paths) {
++    paths_as_strings.push_back(path.string());
++  }
++  std::sort(paths_as_strings.begin(), paths_as_strings.end(),
++            [aescending](const std::string& a, const std::string& b) {
++              if (aescending) {
++                return a < b;
++              } else {
++                return a > b;
++              }
++            });
++  std::vector<fs::path> sorted_paths = {};
++  for (const auto& path : paths_as_strings) {
++    sorted_paths.push_back(fs::path(path));
++  }
++  return sorted_paths;
++}
++
++void copy_file(const fs::path& src, const fs::path& dst) {
++  // Check that the src path exists
++  if (!fs::exists(src)) {
++    throw std::runtime_error(fmt::format("Cannot copy '{}', path does not exist", src.string()));
++  }
++  // Ensure the directory can be copied into
++  if (!fs::exists(dst.parent_path()) && !create_dir_if_needed_for_file(dst)) {
++    throw std::runtime_error(fmt::format(
++        "Cannot copy '{}', couldn't make directory to copy into '{}'", src.string(), dst.string()));
++  }
++  fs::copy_file(src, dst, fs::copy_options::overwrite_existing);
++}
++
++std::string make_screenshot_filepath(const GameVersion game_version, const std::string& name) {
++  std::string file_name;
++  if (name.empty()) {
++    file_name = fmt::format("{}.png", str_util::current_local_timestamp_no_colons());
++  } else {
++    file_name = fmt::format("{}.png", name);
++  }
++  const auto file_path = get_user_screenshots_dir(game_version) / file_name;
++  file_util::create_dir_if_needed_for_file(file_path);
++  return file_path.string();
++}
++
++std::string get_majority_file_line_endings(const std::string& file_contents) {
++  size_t lf_count = 0;
++  size_t crlf_count = 0;
++
++  for (size_t i = 0; i < file_contents.size(); ++i) {
++    if (file_contents[i] == '\n') {
++      if (i > 0 && file_contents[i - 1] == '\r') {
++        crlf_count++;
++      } else {
++        lf_count++;
++      }
++    }
++  }
++
++  if (crlf_count > lf_count) {
++    return "\r\n";
++  }
++  return "\n";
++}
++
++std::pair<int, std::string> get_majority_file_line_endings_and_count(
++    const std::string& file_contents) {
++  size_t lf_count = 0;
++  size_t crlf_count = 0;
++
++  for (size_t i = 0; i < file_contents.size(); ++i) {
++    if (file_contents[i] == '\n') {
++      if (i > 0 && file_contents[i - 1] == '\r') {
++        crlf_count++;
++      } else {
++        lf_count++;
++      }
++    }
++  }
++
++  if (crlf_count > lf_count) {
++    return {lf_count + crlf_count, "\r\n"};
++  }
++  return {lf_count + crlf_count, "\n"};
++}
++
++bool is_dir_in_dir(const fs::path& parent, const fs::path& child) {
++  // Check if the parent path is a prefix of the child path
++  return child.has_parent_path() && child.parent_path().lexically_relative(parent) == fs::path(".");
++}
++
++}  // namespace file_util
+diff --git a/common/util/os.cpp b/common/util/os.cpp
+index bb6621cf..7501b0a2 100644
+--- a/common/util/os.cpp
++++ b/common/util/os.cpp
+@@ -184,8 +184,8 @@ void setup_cpu_info() {
+ 
+ #if defined(_WIN32)
+   setup_cpu_info_windows(gCpuInfo);
+-#elif defined(__APPLE__)
+-  setup_cpu_info_macos(gCpuInfo);
++#elif defined(__APPLE__) || defined(__ps5__)
++  setup_cpu_info_macos(gCpuInfo);  // plain cpuid path, no sysctl
+ #elif defined(__linux__)
+   setup_cpu_info_linux(gCpuInfo);
+ #else
+diff --git a/decompiler/extractor/main.cpp b/decompiler/extractor/main.cpp
+index 70d9e26b..b22be565 100644
+--- a/decompiler/extractor/main.cpp
++++ b/decompiler/extractor/main.cpp
+@@ -111,9 +111,11 @@ std::tuple<std::optional<ISOMetadata>, ExtractorErrorCode> validate(
+   };
+ }
+ 
++extern "C" void ps5_import_stage_set(const char*);  // __ps5__
+ ExtractorErrorCode decompile(const fs::path& in_folder,
+                              const std::string& data_subfolder,
+                              const std::string& config_override) {
++  ps5_import_stage_set("decompile");  // __ps5__
+   // Determine which config to use from the database
+   const auto version_info = get_version_info_or_default(in_folder);
+ 
+@@ -135,6 +137,7 @@ const std::unordered_map<std::string, GameIsoFlags> game_iso_flag_names = {
+     {"jak1-black-label", FLAG_JAK1_BLACK_LABEL}};
+ 
+ ExtractorErrorCode compile(const fs::path& iso_data_path, const std::string& data_subfolder) {
++  ps5_import_stage_set("compile");  // __ps5__
+   // Determine which config to use from the database
+   const auto version_info = get_version_info_or_default(iso_data_path);
+ 
+@@ -176,6 +179,7 @@ void launch_game(const std::string& game_version) {
+ }
+ 
+ int main(int argc, char** argv) {
++  ps5_import_stage_set("extract");  // __ps5__
+   ArgumentGuard u8_guard(argc, argv);
+ 
+   fs::path input_file_path;
+diff --git a/game/graphics/opengl_renderer/DepthCue.cpp b/game/graphics/opengl_renderer/DepthCue.cpp
+index 5e63c56e..c4417e21 100644
+--- a/game/graphics/opengl_renderer/DepthCue.cpp
++++ b/game/graphics/opengl_renderer/DepthCue.cpp
+@@ -34,7 +34,7 @@ void DepthCue::opengl_setup() {
+   glGenTextures(1, &m_ogl.framebuffer_sample_tex);
+   glBindTexture(GL_TEXTURE_2D, m_ogl.framebuffer_sample_tex);
+ 
+-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
++  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);  // __ps5__
+ 
+   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+@@ -56,7 +56,7 @@ void DepthCue::opengl_setup() {
+   glGenTextures(1, &m_ogl.fbo_texture);
+   glBindTexture(GL_TEXTURE_2D, m_ogl.fbo_texture);
+ 
+-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
++  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);  // __ps5__
+ 
+   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+@@ -373,8 +373,8 @@ void DepthCue::setup(SharedRenderState* render_state, ScopedProfilerNode& /*prof
+   m_ogl.framebuffer_sample_height = pc_fb_sample_height;
+ 
+   glBindTexture(GL_TEXTURE_2D, m_ogl.framebuffer_sample_tex);
+-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, pc_fb_sample_width, pc_fb_sample_height, 0, GL_RGB,
+-               GL_UNSIGNED_BYTE, NULL);
++  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, pc_fb_sample_width, pc_fb_sample_height, 0, GL_RGBA,
++               GL_UNSIGNED_BYTE, NULL);  // __ps5__
+   glBindTexture(GL_TEXTURE_2D, 0);
+ 
+   // DEPTH CUE BASE PAGE FRAMEBUFFER
+@@ -398,8 +398,8 @@ void DepthCue::setup(SharedRenderState* render_state, ScopedProfilerNode& /*prof
+   m_ogl.fbo_height = pc_depth_cue_fb_height;
+ 
+   glBindTexture(GL_TEXTURE_2D, m_ogl.fbo_texture);
+-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, pc_depth_cue_fb_width, pc_depth_cue_fb_height, 0, GL_RGB,
+-               GL_UNSIGNED_BYTE, NULL);
++  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, pc_depth_cue_fb_width, pc_depth_cue_fb_height, 0, GL_RGBA,
++               GL_UNSIGNED_BYTE, NULL);  // __ps5__
+   glBindTexture(GL_TEXTURE_2D, 0);
+ 
+   // DEPTH CUE BASE PAGE VERTEX DATA
+diff --git a/game/graphics/opengl_renderer/DirectRenderer.cpp b/game/graphics/opengl_renderer/DirectRenderer.cpp
+index 02653cb0..58df5432 100644
+--- a/game/graphics/opengl_renderer/DirectRenderer.cpp
++++ b/game/graphics/opengl_renderer/DirectRenderer.cpp
+@@ -417,7 +417,7 @@ void DirectRenderer::update_gl_texture(SharedRenderState* render_state, int unit
+   }
+   ASSERT(tex);
+ 
+-  glActiveTexture(GL_TEXTURE20 + unit);
++  glActiveTexture(GL_TEXTURE0 + unit);  // __ps5__: was GL_TEXTURE20 + unit
+   glBindTexture(GL_TEXTURE_2D, *tex);
+   // Note: CLAMP and CLAMP_TO_EDGE are different...
+   if (state.m_clamp_state.clamp_s) {
+diff --git a/game/graphics/opengl_renderer/OpenGLRenderer.cpp b/game/graphics/opengl_renderer/OpenGLRenderer.cpp
+index cc19099d..21517b41 100644
+--- a/game/graphics/opengl_renderer/OpenGLRenderer.cpp
++++ b/game/graphics/opengl_renderer/OpenGLRenderer.cpp
+@@ -1,5 +1,7 @@
+ #include "OpenGLRenderer.h"
+ 
++void ps5_log(const char*, ...);  // __ps5__ proftree
++
+ #include "common/goal_constants.h"
+ #include "common/log/log.h"
+ #include "common/util/FileUtil.h"
+@@ -1090,6 +1092,23 @@ void OpenGLRenderer::render(DmaFollower dma, const RenderOptions& settings) {
+   }
+ 
+   m_profiler.finish();
++  {  // __ps5__ proftree
++    static int ps5_tree_frame = 0;
++    static int ps5_last_slow = -1000;
++    const bool ps5_slow = m_profiler.root_time() > 0.026f && ps5_tree_frame - ps5_last_slow > 600;
++    if (ps5_slow) ps5_last_slow = ps5_tree_frame;
++    if (++ps5_tree_frame % 240 == 0 || ps5_slow) {
++      const std::string tree = m_profiler.to_string();
++      size_t pos = 0;
++      int ps5_lines = 0;
++      while (pos < tree.size() && ps5_lines++ < 28) {
++        size_t nl = tree.find('\n', pos);
++        if (nl == std::string::npos) nl = tree.size();
++        ps5_log("ptree: %.*s", int(nl - pos), tree.c_str() + pos);
++        pos = nl + 1;
++      }
++    }
++  }
+   //  if (m_profiler.root_time() > 0.018) {
+   //    fmt::print("Slow frame: {:.2f} ms\n", m_profiler.root_time() * 1000);
+   //    fmt::print("{}\n", m_profiler.to_string());
+diff --git a/game/graphics/opengl_renderer/Shader.cpp b/game/graphics/opengl_renderer/Shader.cpp
+index bfe48e43..e3db5233 100644
+--- a/game/graphics/opengl_renderer/Shader.cpp
++++ b/game/graphics/opengl_renderer/Shader.cpp
+@@ -21,6 +21,19 @@ Shader::Shader(const std::string& shader_name, GameVersion version) : m_name(sha
+   vert_src = std::regex_replace(vert_src, std::regex("SCISSOR_HEIGHT"), scissor_height);
+   frag_src = std::regex_replace(frag_src, std::regex("SCISSOR_HEIGHT"), scissor_height);
+   vert_src = std::regex_replace(vert_src, std::regex("SCISSOR_ADJUST"), "(" + scissor_adjust + ")");
++  // __ps5__: u16 integer attributes arrive as u32 (see ps5shim/glfix.cpp)
++  vert_src = std::regex_replace(
++      vert_src, std::regex("in int time_of_day_index;"),
++      "in uint time_of_day_index_u32;\n#define time_of_day_index (int(time_of_day_index_u32 & 0xffffu))");
++  vert_src = std::regex_replace(
++      vert_src, std::regex("in uvec2 flags_matrix;"),
++      "in uint flags_matrix_u32;\n#define flags_matrix uvec2(flags_matrix_u32 & 0xffffu, flags_matrix_u32 >> 16)");
++  if (shader_name.find("sprite") != std::string::npos) {  // the direct shaders feed u8 data into tex_info_in
++    vert_src = std::regex_replace(
++        vert_src, std::regex("in uvec4 tex_info_in;"),
++        "in uvec2 tex_info_u32;\n#define tex_info_in uvec4(tex_info_u32.x & 0xffffu, tex_info_u32.x >> 16, "
++        "tex_info_u32.y & 0xffffu, tex_info_u32.y >> 16)");
++  }
+ 
+   m_vert_shader = glCreateShader(GL_VERTEX_SHADER);
+   const char* src = vert_src.c_str();
+@@ -71,7 +84,7 @@ Shader::Shader(const std::string& shader_name, GameVersion version) : m_name(sha
+     std::string uniformName = "tex_T" + std::to_string(i);
+     GLint texLoc = glGetUniformLocation(m_program, uniformName.c_str());
+     if (texLoc != -1) {
+-      glUniform1i(texLoc, i);
++      glUniform1i(texLoc, i >= 20 ? i - 20 : i);  // __ps5__: driver has only 16 texture units
+     }
+   }
+   // assuming that the bones uniform block is always using binding point 1
+diff --git a/game/graphics/opengl_renderer/ocean/OceanTexture.cpp b/game/graphics/opengl_renderer/ocean/OceanTexture.cpp
+index 0c3d3c80..49a3793e 100644
+--- a/game/graphics/opengl_renderer/ocean/OceanTexture.cpp
++++ b/game/graphics/opengl_renderer/ocean/OceanTexture.cpp
+@@ -233,6 +233,8 @@ void OceanTexture::handle_ocean_texture_jak1(DmaFollower& dma,
+     // if we did mipmaps, the above code rendered to temp, and now we need to generate mipmaps
+     // in the real output
+     make_texture_with_mipmaps(render_state, prof);
++    glBindTexture(GL_TEXTURE_2D, m_result_texture.texture());  // __ps5__
++    glGenerateMipmap(GL_TEXTURE_2D);
+   }
+ 
+   // give to gpu!
+@@ -392,6 +394,8 @@ void OceanTexture::handle_ocean_texture_jak2(DmaFollower& dma,
+     // if we did mipmaps, the above code rendered to temp, and now we need to generate mipmaps
+     // in the real output
+     make_texture_with_mipmaps(render_state, prof);
++    glBindTexture(GL_TEXTURE_2D, m_result_texture.texture());  // __ps5__
++    glGenerateMipmap(GL_TEXTURE_2D);
+   }
+ 
+   // (reset-display-gs-state *display* arg0)
+diff --git a/game/graphics/opengl_renderer/opengl_utils.cpp b/game/graphics/opengl_renderer/opengl_utils.cpp
+index e576bc0d..c9c117eb 100644
+--- a/game/graphics/opengl_renderer/opengl_utils.cpp
++++ b/game/graphics/opengl_renderer/opengl_utils.cpp
+@@ -201,8 +201,8 @@ FramebufferCopier::FramebufferCopier() {
+   glGenTextures(1, &m_fbo_texture);
+   glBindTexture(GL_TEXTURE_2D, m_fbo_texture);
+ 
+-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, m_fbo_width, m_fbo_height, 0, GL_RGB, GL_UNSIGNED_BYTE,
+-               NULL);
++  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_fbo_width, m_fbo_height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
++               NULL);  // __ps5__
+ 
+   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+@@ -228,8 +228,8 @@ void FramebufferCopier::copy_now(int render_fb_w, int render_fb_h, GLuint render
+ 
+     glBindTexture(GL_TEXTURE_2D, m_fbo_texture);
+ 
+-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, m_fbo_width, m_fbo_height, 0, GL_RGB, GL_UNSIGNED_BYTE,
+-                 NULL);
++    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_fbo_width, m_fbo_height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
++                 NULL);  // __ps5__
+ 
+     glBindTexture(GL_TEXTURE_2D, 0);
+   }
+diff --git a/game/graphics/opengl_renderer/sprite/Sprite3_Distort.cpp b/game/graphics/opengl_renderer/sprite/Sprite3_Distort.cpp
+index f71cb6e4..ae7a215d 100644
+--- a/game/graphics/opengl_renderer/sprite/Sprite3_Distort.cpp
++++ b/game/graphics/opengl_renderer/sprite/Sprite3_Distort.cpp
+@@ -24,8 +24,8 @@ void Sprite3::opengl_setup_distort() {
+   glGenTextures(1, &m_distort_ogl.fbo_texture);
+   glBindTexture(GL_TEXTURE_2D, m_distort_ogl.fbo_texture);
+ 
+-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, m_distort_ogl.fbo_width, m_distort_ogl.fbo_height, 0,
+-               GL_RGB, GL_UNSIGNED_BYTE, NULL);
++  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_distort_ogl.fbo_width, m_distort_ogl.fbo_height, 0,
++               GL_RGBA, GL_UNSIGNED_BYTE, NULL);  // __ps5__
+ 
+   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+@@ -632,8 +632,8 @@ void Sprite3::distort_setup_framebuffer_dims(SharedRenderState* render_state) {
+ 
+     glBindTexture(GL_TEXTURE_2D, m_distort_ogl.fbo_texture);
+ 
+-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, m_distort_ogl.fbo_width, m_distort_ogl.fbo_height, 0,
+-                 GL_RGB, GL_UNSIGNED_BYTE, NULL);
++    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_distort_ogl.fbo_width, m_distort_ogl.fbo_height, 0,
++                 GL_RGBA, GL_UNSIGNED_BYTE, NULL);  // __ps5__
+ 
+     glBindTexture(GL_TEXTURE_2D, 0);
+   }
+diff --git a/game/graphics/pipelines/opengl.cpp b/game/graphics/pipelines/opengl.cpp
+index d8d15c87..99c111f1 100644
+--- a/game/graphics/pipelines/opengl.cpp
++++ b/game/graphics/pipelines/opengl.cpp
+@@ -5,7 +5,34 @@
+ 
+ #include "opengl.h"
+ 
++void ps5_log(const char*, ...);  // __ps5__
+ #include <condition_variable>
++
++// __ps5__ gfxprof: wall time of the phases of the render loop
++void ps5_log(const char*, ...);
++#include <chrono>
++namespace {
++struct Ps5Prof {
++  double ns[8] = {};
++  int frames = 0;
++  std::chrono::steady_clock::time_point mark = std::chrono::steady_clock::now();
++  void lap(int i) {
++    const auto n = std::chrono::steady_clock::now();
++    ns[i] += double(std::chrono::duration_cast<std::chrono::nanoseconds>(n - mark).count());
++    mark = n;
++  }
++  void restart() { mark = std::chrono::steady_clock::now(); }
++  void frame_done() {
++    if (++frames == 180) {
++      ps5_log("gfxprof/frame ms: wait-dma %.2f render-frame %.2f imgui %.2f limiter %.2f swap %.2f other %.2f", ns[0] / 1e6 / frames,
++              ns[1] / 1e6 / frames, ns[2] / 1e6 / frames, ns[3] / 1e6 / frames, ns[4] / 1e6 / frames, ns[5] / 1e6 / frames);
++      for (double& v : ns) v = 0;
++      frames = 0;
++    }
++  }
++};
++Ps5Prof g_ps5prof;
++}  // namespace
+ #include <memory>
+ #include <mutex>
+ #include <sstream>
+@@ -236,8 +263,7 @@ static std::shared_ptr<GfxDisplay> gl_make_display(int width,
+   if (!gl_inited) {
+     {
+       auto p = scoped_prof("startup::sdl::glad_init");
+-      gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress);
+-      if (!gladLoadGL()) {
++      if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
+         lg::error("GL init fail");
+         dialogs::create_error_message_dialog("Critical Error Encountered",
+                                              "Unable to initialize OpenGL API.\nOpenGOAL requires "
+@@ -475,6 +501,7 @@ void render_game_frame(int game_width,
+                        int brightness_contrast_color,
+                        int brightness_contrast_alpha,
+                        bool take_screenshot) {
++  g_ps5prof.lap(5);  // __ps5__ gfxprof: everything since the previous frame's swap that is not below
+   // wait for a copied chain.
+   bool got_chain = false;
+   {
+@@ -484,6 +511,7 @@ void render_game_frame(int game_width,
+     got_chain = g_gfx_data->dma_cv.wait_for(lock, std::chrono::milliseconds(40),
+                                             [=] { return g_gfx_data->has_data_to_render; });
+   }
++  g_ps5prof.lap(0);  // __ps5__ gfxprof
+   // render that chain.
+   if (got_chain) {
+     g_gfx_data->frame_idx_of_input_data = g_gfx_data->frame_idx;
+@@ -669,6 +697,7 @@ void GLDisplay::render() {
+     }
+   }
+ 
++  g_ps5prof.lap(1);  // __ps5__ gfxprof: game render done
+   // render debug
+   if (is_imgui_visible()) {
+     auto p = scoped_prof("debug-gui");
+@@ -680,19 +709,23 @@ void GLDisplay::render() {
+     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+   }
+ 
++  g_ps5prof.lap(2);  // __ps5__ gfxprof: imgui
+   // actual vsync
+   g_gfx_data->debug_gui.finish_frame();
+   if (Gfx::g_global_settings.framelimiter) {
+     auto p = scoped_prof("frame-limiter");
+     g_gfx_data->frame_limiter.run(
+-        Gfx::g_global_settings.target_fps, Gfx::g_global_settings.experimental_accurate_lag,
++        Gfx::g_global_settings.target_fps, false /* __ps5__: no accurate-lag rounding */,
+         Gfx::g_global_settings.sleep_in_frame_limiter, g_gfx_data->last_engine_time);
+   }
+ 
++  g_ps5prof.lap(3);  // __ps5__ gfxprof: frame limiter
+   {
+     auto p = scoped_prof("swap-buffers");
+     SDL_GL_SwapWindow(m_window);
+   }
++  g_ps5prof.lap(4);  // __ps5__ gfxprof: swap
++  g_ps5prof.frame_done();
+ 
+   // actually wait for vsync
+   if (g_gfx_data->debug_gui.should_gl_finish()) {
+diff --git a/game/kernel/common/kmachine.cpp b/game/kernel/common/kmachine.cpp
+index bc2c52d8..9a8977b7 100644
+--- a/game/kernel/common/kmachine.cpp
++++ b/game/kernel/common/kmachine.cpp
+@@ -1045,7 +1045,7 @@ void pc_set_gfx_hack(u64 which, u32 symptr) {
+ u32 pc_get_os() {
+ #ifdef _WIN32
+   return g_pc_port_funcs.intern_from_c("windows").offset;
+-#elif __linux__
++#elif defined(__linux__) || defined(__ps5__)
+   return g_pc_port_funcs.intern_from_c("linux").offset;
+ #elif __APPLE__
+   return g_pc_port_funcs.intern_from_c("darwin").offset;
+diff --git a/game/kernel/common/kscheme.cpp b/game/kernel/common/kscheme.cpp
+index ae43de72..c07dd270 100644
+--- a/game/kernel/common/kscheme.cpp
++++ b/game/kernel/common/kscheme.cpp
+@@ -84,7 +84,7 @@ u64 goal_malloc(u32 heap, u32 size, u32 flags, u32 name) {
+ 
+ extern "C" {
+ // defined in asm_funcs.asm
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+ uint64_t _call_goal_asm_systemv(u64 a0, u64 a1, u64 a2, void* fptr, void* st_ptr, void* offset);
+ uint64_t _call_goal_on_stack_asm_systemv(u64 rsp,
+                                          u64 u0,
+@@ -116,7 +116,7 @@ u64 call_goal(Ptr<Function> f, u64 a, u64 b, u64 c, u64 st, void* offset) {
+   void* st_ptr = (void*)st;
+ 
+   void* fptr = f.c();
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+   return _call_goal_asm_systemv(a, b, c, fptr, st_ptr, offset);
+ #elif defined __APPLE__ && defined __x86_64__
+   return _call_goal_asm_systemv(a, b, c, fptr, st_ptr, offset);
+@@ -132,7 +132,7 @@ u64 call_goal_on_stack(Ptr<Function> f, u64 rsp, u64 st, void* offset) {
+   void* st_ptr = (void*)st;
+ 
+   void* fptr = f.c();
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+   return _call_goal_on_stack_asm_systemv(rsp, 0, 0, fptr, st_ptr, offset);
+ #elif defined __APPLE__ && defined __x86_64__
+   return _call_goal_on_stack_asm_systemv(rsp, 0, 0, fptr, st_ptr, offset);
+diff --git a/game/kernel/jak1/kscheme.cpp b/game/kernel/jak1/kscheme.cpp
+index c8287de5..86100780 100644
+--- a/game/kernel/jak1/kscheme.cpp
++++ b/game/kernel/jak1/kscheme.cpp
+@@ -506,7 +506,7 @@ Ptr<Function> make_stack_arg_function_from_c_win32(void* func) {
+  * The implementation is to create a simple trampoline function which jumps to the C function.
+  */
+ Ptr<Function> make_function_from_c(void* func, bool arg3_is_pp = false) {
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+   return make_function_from_c_systemv(func, arg3_is_pp);
+ #elif __APPLE__
+   return make_function_from_c_systemv(func, arg3_is_pp);
+@@ -516,7 +516,7 @@ Ptr<Function> make_function_from_c(void* func, bool arg3_is_pp = false) {
+ }
+ 
+ Ptr<Function> make_stack_arg_function_from_c(void* func) {
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+   return make_stack_arg_function_from_c_systemv(func);
+ #elif __APPLE__
+   return make_stack_arg_function_from_c_systemv(func);
+diff --git a/game/kernel/jak2/kscheme.cpp b/game/kernel/jak2/kscheme.cpp
+index 37946a41..636d8cd7 100644
+--- a/game/kernel/jak2/kscheme.cpp
++++ b/game/kernel/jak2/kscheme.cpp
+@@ -504,7 +504,7 @@ Ptr<Function> make_stack_arg_function_from_c_win32(void* func) {
+  * The implementation is to create a simple trampoline function which jumps to the C function.
+  */
+ Ptr<Function> make_function_from_c(void* func, bool arg3_is_pp = false) {
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+   return make_function_from_c_systemv(func, arg3_is_pp);
+ #elif __APPLE__
+   return make_function_from_c_systemv(func, arg3_is_pp);
+@@ -514,7 +514,7 @@ Ptr<Function> make_function_from_c(void* func, bool arg3_is_pp = false) {
+ }
+ 
+ Ptr<Function> make_stack_arg_function_from_c(void* func) {
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+   return make_stack_arg_function_from_c_systemv(func);
+ #elif __APPLE__
+   return make_stack_arg_function_from_c_systemv(func);
+diff --git a/game/kernel/jak3/kscheme.cpp b/game/kernel/jak3/kscheme.cpp
+index 7a9d7c1e..acdbd54f 100644
+--- a/game/kernel/jak3/kscheme.cpp
++++ b/game/kernel/jak3/kscheme.cpp
+@@ -491,7 +491,7 @@ Ptr<Function> make_stack_arg_function_from_c_win32(void* func) {
+  * The implementation is to create a simple trampoline function which jumps to the C function.
+  */
+ Ptr<Function> make_function_from_c(void* func, bool arg3_is_pp = false) {
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+   return make_function_from_c_systemv(func, arg3_is_pp);
+ #elif __APPLE__
+   return make_function_from_c_systemv(func, arg3_is_pp);
+@@ -501,7 +501,7 @@ Ptr<Function> make_function_from_c(void* func, bool arg3_is_pp = false) {
+ }
+ 
+ Ptr<Function> make_stack_arg_function_from_c(void* func) {
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+   return make_stack_arg_function_from_c_systemv(func);
+ #elif __APPLE__
+   return make_stack_arg_function_from_c_systemv(func);
+diff --git a/game/kernel/jakx/kscheme.cpp b/game/kernel/jakx/kscheme.cpp
+index b05c2370..071b0d6a 100644
+--- a/game/kernel/jakx/kscheme.cpp
++++ b/game/kernel/jakx/kscheme.cpp
+@@ -491,7 +491,7 @@ Ptr<Function> make_stack_arg_function_from_c_win32(void* func) {
+  * The implementation is to create a simple trampoline function which jumps to the C function.
+  */
+ Ptr<Function> make_function_from_c(void* func, bool arg3_is_pp = false) {
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+   return make_function_from_c_systemv(func, arg3_is_pp);
+ #elif __APPLE__
+   return make_function_from_c_systemv(func, arg3_is_pp);
+@@ -501,7 +501,7 @@ Ptr<Function> make_function_from_c(void* func, bool arg3_is_pp = false) {
+ }
+ 
+ Ptr<Function> make_stack_arg_function_from_c(void* func) {
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+   return make_stack_arg_function_from_c_systemv(func);
+ #elif __APPLE__
+   return make_stack_arg_function_from_c_systemv(func);
+diff --git a/game/mips2c/mips2c_private.h b/game/mips2c/mips2c_private.h
+index f3124154..e32dfb6d 100644
+--- a/game/mips2c/mips2c_private.h
++++ b/game/mips2c/mips2c_private.h
+@@ -20,7 +20,7 @@
+ extern u8* g_ee_main_mem;
+ 
+ extern "C" {
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+ u64 _call_goal8_asm_systemv(void* func, u64* arg_array, u64 zero, u64 pp, u64 st, void* off);
+ #elif defined __APPLE__ && defined __x86_64__
+ u64 _call_goal8_asm_systemv(void* func, u64* arg_array, u64 zero, u64 pp, u64 st, void* off) asm(
+@@ -353,7 +353,7 @@ struct ExecutionContext {
+     u64 args[8] = {gprs[a0].du64[0], gprs[a1].du64[0], gprs[a2].du64[0], gprs[a3].du64[0],
+                    gprs[t0].du64[0], gprs[t1].du64[0], gprs[t2].du64[0], gprs[t3].du64[0]};
+     ASSERT(addr);
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+     gprs[v0].du64[0] = _call_goal8_asm_systemv(g_ee_main_mem + addr, args, 0, gprs[s6].du64[0],
+                                                gprs[s7].du64[0], g_ee_main_mem);
+ #elif defined __APPLE__ && defined __x86_64__
+diff --git a/game/mips2c/mips2c_table.cpp b/game/mips2c/mips2c_table.cpp
+index 018b0d33..a88bc5f6 100644
+--- a/game/mips2c/mips2c_table.cpp
++++ b/game/mips2c/mips2c_table.cpp
+@@ -11,7 +11,7 @@
+ #include "game/runtime.h"
+ 
+ extern "C" {
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+ void _mips2c_call_systemv();
+ #elif defined __APPLE__ && defined __x86_64__
+ void _mips2c_call_systemv() asm("_mips2c_call_systemv");
+@@ -719,7 +719,7 @@ void LinkedFunctionTable::reg(const std::string& name, u64 (*exec)(void*), u32 s
+     ptr++;
+ 
+     // call the other function
+-#ifdef __linux__
++#if defined(__linux__) || defined(__ps5__)
+     addr = (u64)_mips2c_call_systemv;
+ #elif defined __APPLE__ && defined __x86_64__
+     addr = (u64)_mips2c_call_systemv;
+diff --git a/game/runtime.cpp b/game/runtime.cpp
+index 4f7cc5e1..ef4d0697 100644
+--- a/game/runtime.cpp
++++ b/game/runtime.cpp
+@@ -166,9 +166,21 @@ void ee_runner(SystemThreadInterface& iface) {
+                   MAP_ANONYMOUS | MAP_32BIT | MAP_PRIVATE | MAP_POPULATE, 0, 0);
+ #endif
+   } else {
++#ifdef __ps5__
++    // PS5: map read/write first (fd must be -1 for anonymous memory), then make it executable.
++    g_ee_main_mem = (u8*)mmap((void*)EE_MAIN_MEM_MAP, EE_MAIN_MEM_SIZE, PROT_READ | PROT_WRITE,
++                              MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
++    if (g_ee_main_mem != (u8*)(-1) &&
++        mprotect(g_ee_main_mem, EE_MAIN_MEM_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
++      lg::error("mprotect(RWX) of the main memory failed: {}", strerror(errno));
++      munmap(g_ee_main_mem, EE_MAIN_MEM_SIZE);
++      g_ee_main_mem = (u8*)(-1);
++    }
++#else
+     g_ee_main_mem =
+         (u8*)mmap((void*)EE_MAIN_MEM_MAP, EE_MAIN_MEM_SIZE, PROT_EXEC | PROT_READ | PROT_WRITE,
+                   MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
++#endif
+   }
+ 
+   if (g_ee_main_mem == (u8*)(-1)) {
+diff --git a/game/system/SystemThread.cpp b/game/system/SystemThread.cpp
+index 45aa034a..a560ed46 100644
+--- a/game/system/SystemThread.cpp
++++ b/game/system/SystemThread.cpp
+@@ -93,11 +93,19 @@ bool SystemThreadManager::all_threads_exiting() {
+ /*!
+  * bootstrap function to call a SystemThread's function
+  */
++#if defined(__ps5__)
++extern "C" void ps5_thread_register(const char*);  // __ps5__
++#endif
+ void* bootstrap_thread_func(void* x) {
+   SystemThread* thd = (SystemThread*)x;
++#if defined(__ps5__)
++  ps5_thread_register(thd->name.c_str());  // __ps5__
++#endif
+   SystemThreadInterface iface(thd);
+ 
+-#ifdef __linux
++#if defined(__ps5__)
++  // no thread naming on the PS5
++#elif defined(__linux)
+   pthread_setname_np(pthread_self(), thd->name.c_str());
+ #elif __APPLE__
+   pthread_setname_np(thd->name.c_str());
+diff --git a/third-party/imgui/imgui_impl_opengl3_loader.h b/third-party/imgui/imgui_impl_opengl3_loader.h
+index 2c485841..aa63c597 100644
+--- a/third-party/imgui/imgui_impl_opengl3_loader.h
++++ b/third-party/imgui/imgui_impl_opengl3_loader.h
+@@ -668,6 +668,17 @@ static GL3WglProc get_proc(const char *proc)
+         res = (GL3WglProc)GetProcAddress(libgl, proc);
+     return res;
+ }
++#elif defined(__ps5__)
++#ifdef __cplusplus
++extern "C" {
++#endif
++extern const void* ps5_gl_lookup(const char*);
++#ifdef __cplusplus
++}
++#endif
++static int open_libgl(void) { return GL3W_OK; }
++static void close_libgl(void) {}
++static GL3WglProc get_proc(const char *proc) { return (GL3WglProc)ps5_gl_lookup(proc); }
+ #elif defined(__APPLE__)
+ #include <dlfcn.h>
+ 
