@@ -1,0 +1,21 @@
+diff --git a/game/graphics/opengl_renderer/OpenGLRenderer.cpp b/game/graphics/opengl_renderer/OpenGLRenderer.cpp
+index e5ca51a7..21517b41 100644
+--- a/game/graphics/opengl_renderer/OpenGLRenderer.cpp
++++ b/game/graphics/opengl_renderer/OpenGLRenderer.cpp
+@@ -1094,10 +1094,14 @@ void OpenGLRenderer::render(DmaFollower dma, const RenderOptions& settings) {
+   m_profiler.finish();
+   {  // __ps5__ proftree
+     static int ps5_tree_frame = 0;
+-    if (++ps5_tree_frame % 240 == 0) {
++    static int ps5_last_slow = -1000;
++    const bool ps5_slow = m_profiler.root_time() > 0.026f && ps5_tree_frame - ps5_last_slow > 600;
++    if (ps5_slow) ps5_last_slow = ps5_tree_frame;
++    if (++ps5_tree_frame % 240 == 0 || ps5_slow) {
+       const std::string tree = m_profiler.to_string();
+       size_t pos = 0;
+-      while (pos < tree.size()) {
++      int ps5_lines = 0;
++      while (pos < tree.size() && ps5_lines++ < 28) {
+         size_t nl = tree.find('\n', pos);
+         if (nl == std::string::npos) nl = tree.size();
+         ps5_log("ptree: %.*s", int(nl - pos), tree.c_str() + pos);

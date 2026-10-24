@@ -1,0 +1,12 @@
+diff --git a/game/graphics/pipelines/opengl.cpp b/game/graphics/pipelines/opengl.cpp
+index 84601b6a..99c111f1 100644
+--- a/game/graphics/pipelines/opengl.cpp
++++ b/game/graphics/pipelines/opengl.cpp
+@@ -5,6 +5,7 @@
+ 
+ #include "opengl.h"
+ 
++void ps5_log(const char*, ...);  // __ps5__
+ #include <condition_variable>
+ 
+ // __ps5__ gfxprof: wall time of the phases of the render loop
