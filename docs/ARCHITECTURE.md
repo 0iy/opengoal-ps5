@@ -33,7 +33,7 @@ server, and links a patched graphics driver. The PC side only installs the app a
 | Engine | `engine/` | jak-project is not forked. Idempotent scripts patch an upstream checkout (`apply_ps5_patches.py` is the core; FSR, in-game settings, import progress and profilers are optional). `ports/manifest.json` lists every step with the text it depends on, which lets `sync_upstream.py` port new OpenGOAL versions and report what broke before anything is written. `gen_ps5_ninja.py` and `gen_ps5_extractor.py` rebuild the engine and the extractor with the PS5 compiler from the host CMake configuration. |
 | Payloads | `payloads/` | Tiny ELFs sent to the console's loader port: close/launch the app, ShadowMountPlus rescan, keep-awake, kernel log, kstuff flag read. |
 | Tools | `tools/` | `ps5` command line: build, deploy, run, measure, QA, test. |
-| Installer | `installer/` | What users get: `install.py` uploads the app over FTP; `pc_import.py` and the GUI prepare games on the PC; `make_release.*` bundles it all. |
+| Installer | `installer/` | What users get: `ps5_setup.py` finds the console and installs everything that is missing through the `ogagent` payload (`install.py` is the FTP fallback); `pc_import.py` and the GUI prepare games on the PC; `make_release.*` bundles it all. |
 
 ## Runtime
 

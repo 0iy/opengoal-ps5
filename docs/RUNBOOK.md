@@ -4,6 +4,11 @@ For developers. Users follow [`INSTALL.md`](INSTALL.md). Tested console: PS5, fi
 
 ## Boot order that works (after every console restart)
 
+Steps 2 and 3 are automated: after the loader (step 1) is up, run `tools/ps5 setup` (or `python installer/ps5_setup.py`). It maps what answers on the console, loads kstuff-lite
+(only with `--with-kstuff`) and ShadowMountPlus in this order when the live state shows them missing, uploads and starts the app, and waits for evidence (a port, a process) after
+every step. It never loads OnionHEN, never writes kernel flags and never restarts the console. `--dry-run` shows the plan. Details and options: [`INSTALL.md`](INSTALL.md).
+The list below is what it implements, and what to do by hand:
+
 1. Browser exploit and ELF loader (port 9021 open). Nothing else yet.
 2. `kstuff-lite` (send to 9021), wait about 20 s.
 3. `ftpsrv-ps5.elf` (FTP 2121), ShadowMountPlus (mounts `/data/homebrew/LAPY77001` when the app launches), optionally `shsrv-ps5.elf` (plain TCP shell on 2323:
@@ -13,7 +18,8 @@ For developers. Users follow [`INSTALL.md`](INSTALL.md). Tested console: PS5, fi
 5. A ps5debug payload on port 744 is optional; `python tools/ps5dbg_maps.py list` is read-only.
 
 Payloads come from their upstream releases (`EchoStretch/kstuff-lite`, `ps5-payload-dev/ftpsrv`, `ps5-payload-dev/shsrv`, ShadowMountPlus): verify them
-against the release digests. Never write kernel flags from payloads. Never restart the console from scripts.
+against the release digests. `ps5_setup.py` pins size and SHA-256 (kstuff-lite v1.11, ShadowMountPlus 1.7beta7, ftpsrv v0.21.1, shsrv v0.20) in its `PAYLOADS` table; update
+the pins there when you move to a newer release (hash the file you downloaded, compare with the `digest` of the GitHub release API). Never write kernel flags from payloads. Never restart the console from scripts.
 
 ## Daily loop
 

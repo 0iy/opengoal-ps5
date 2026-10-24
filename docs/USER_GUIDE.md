@@ -50,7 +50,7 @@ Settings are stored in `/data/opengoal/config/ps5.cfg`. The output is locked to 
 | Problem | Fix |
 |---|---|
 | App refused at launch (`0x80020008`) | OnionHEN was loaded before the app; start without it |
-| Installer reports missing loader or FTP | start the exploit, then `ftpsrv-ps5.elf` after kstuff-lite; run the installer again (safe to repeat) |
+| Setup waits for the ELF loader | start the exploit on the PS5; it continues by itself, or run `python ps5_setup.py` again (safe to repeat) |
 | Import rejected | read the reason shown on the page (wrong game, truncated image, not an ISO) |
 | Crash or black screen in game | switch off Draw merging, Async GPU submit, Lazy mipmaps, Upscaling one by one; restart the app |
 | Nothing works after rest mode | re-run the exploit and the ELF loader; do not restart from scripts |

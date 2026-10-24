@@ -113,8 +113,8 @@ Paths starting with `LAPY77001` are inside the bundle's `app` folder.
 | `LAPY77001/assets/NotoSansJP-Medium.ttf` | launcher font | SIL OFL 1.1 (notice in `LICENSES/OFL-1.1.txt`) |
 | `LAPY77001/assets/skeleton.tar.zst` | `goal_src`, decompiler configs, `game/assets` (fonts, shaders, text tables, controller database), `custom_assets`, `common/goos` of the patched jak-project tree; no game data | ISC and the library licences in 2. |
 | `LAPY77001/assets/banner.txt` | boilerplate stub text | GPL-3.0-or-later |
-| `scan.elf` (bundle folder `tools`) | payload, see 4. | GPL-3.0-or-later |
-| `install.py`, `install.sh`, `install.bat`, `Install-OpenGOAL.ps1`, `README.txt`, `gui/*`, `pc_import.py`, `bootstrap.*`, `SHA256SUMS` | own | GPL-3.0-or-later |
+| `scan.elf` (bundle folders `tools` and `payloads`), `ogagent.elf` (bundle folder `payloads`) | payloads, see 4. | GPL-3.0-or-later |
+| `install.py`, `install.sh`, `install.bat`, `Install-OpenGOAL.ps1`, `README.txt`, `gui/*`, `pc_import.py`, `ps5_setup.py`, `bootstrap.*`, `SHA256SUMS` | own | GPL-3.0-or-later |
 | `LICENSE`, `THIRD_PARTY_NOTICES.md`, `LICENSES/` | this notice and the licence texts | - |
 
 Never shipped: `sce_sys/snd0.at9` (derived from a copyrighted track; removed by `installer/make_release.*`), game images, keys, firmware.
@@ -137,7 +137,7 @@ repository. No third-party binary is stored here.
 | `launchapp.elf` | `launchapp.c` | `7fcaa354f8b98b0d78002081ef879d5c86ad1536a604e7a70a295728a11ec8d4` | no |
 | `scan.elf` | `scan.c` | `07fa18dd2c63b9865a1f367236dde9a3c7e995005b05321e159b7dc2a1c0fb1d` | yes (bundle folder `tools`) |
 | `keepalive.elf` | `keepalive.c` | `460cbd5584644d756f6e18ac413a7c2347943b3238809d0403b19dd8e6010309` | no |
-| `ogagent.elf` | `ogagent.c` (own work, GPL-3.0-or-later) | `f910068d95be4a25de3c616e8dad49d611b6d69b5647875a5bb328d0635d7a1e` | no (written by the setup script) |
+| `ogagent.elf` | `ogagent.c` (own work, GPL-3.0-or-later) | `f910068d95be4a25de3c616e8dad49d611b6d69b5647875a5bb328d0635d7a1e` | yes (bundle folder `payloads`; `ps5_setup.py` patches a copy) |
 
 `ogagent.elf` is stored with its token unpatched (32 filler bytes after the marker `OGAGENT_TOKEN:`); the hash above is of that file, the setup script patches a copy.
 
@@ -158,6 +158,20 @@ load them. Licences were read from the GitHub repositories on 2026-10-24.
 | ps5debug-NG, playden-ps5, SharpProspero | reference only (git-ignored checkouts); nothing copied | GPL-3.0 each | Pharaoh2k/ps5debug-NG, leolobato/playden-ps5, SvenGDK/SharpProspero |
 | Chiaki-ng | Remote Play experiments, not part of the app | AGPL-3.0 | chiaki-ng/chiaki-ng |
 | OnionHEN, ActRemoteLink | named in the docs as things to avoid or try; no single upstream repository was found whose licence could be read | unknown | - |
+
+`installer/ps5_setup.py` downloads some of these on the user's machine at run time, never bundles them, and refuses any file whose size or SHA-256 differs from the pin in its
+`PAYLOADS` table (sizes and digests read from the GitHub release API on 2026-10-24 and re-computed on the downloaded files):
+
+| Asset | Size | sha256 |
+|---|---|---|
+| EchoStretch/kstuff-lite v1.11 `kstuff.elf` | 1737080 | `ab9a6cb4d3b1daf139d4d646e402b1cf569071acd64599c936d7a3a6164dc779` |
+| drakmor/ShadowMountPlus 1.7beta7 `shadowmountplus.elf` | 2517288 | `a8f9d7f76e8749912508ade0cd5c78076b5bbf1271813c78c80c3d3d9d4777ee` |
+| ps5-payload-dev/ftpsrv v0.21.1 `ftpsrv-ps5.elf` (fallback only) | 191864 | `7d4b31c83eae4e056580482a3a074e1db25922efc74ac1e439473b45d71a5938` |
+| ps5-payload-dev/shsrv v0.20 `shsrv-ps5.elf` (optional) | 986184 | `fa4ccb2587bb61be317df0d001f668b17ebf9b4aafad87acf691b1fb8da0bd2d` |
+
+The script shows each source and licence before it sends the file; kstuff-lite is sent only with the user's consent because its authors published no licence. The Sony Interactive
+Entertainment MAC prefixes used for ranking candidates come from the public IEEE OUI list; the Remote Play discovery request follows the format used by chiaki-ng
+(`lib/src/discovery.c`, AGPL-3.0; only the message format was taken, no code).
 
 ## 6. Build and test tools (not distributed)
 

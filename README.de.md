@@ -68,12 +68,13 @@ Die rechte Spalte beschreibt den ueblichen PKG-Weg allgemein, kein bestimmtes We
 
 ## Start
 
-Du brauchst eine PS5 mit Firmware 13.60 (einzige getestete Version): ELF-Loader (9021), kstuff, FTP (2121) und ShadowMountPlus laufen, einen PC im selben Netz mit Python 3
+Du brauchst eine PS5 mit Firmware 13.60 (einzige getestete Version), auf der der ELF-Loader (Port 9021) laeuft, einen PC im selben Netz mit Python 3
 und deine Spiele als unveraenderte `.iso`-Abbilder.
 
-1. `OpenGOAL-PS5.zip` vom [neuesten Release](https://github.com/0iy/opengoal-ps5/releases/latest) laden und entpacken.
-2. App auf der Konsole installieren: `install.bat` (Windows) oder `sh install.sh --lang de` (Linux, macOS) starten, PS5-Adresse eingeben oder Enter fuer die Suche.
-3. **OpenGOAL-PS5** auf der Konsole starten und die Spiele vom PC hinzufuegen: eine Zeile einfuegen, ein kleines Fenster oeffnet sich, `.iso`-Dateien hineinziehen:
+1. Konsole einrichten: `OpenGOAL-PS5.zip` vom [neuesten Release](https://github.com/0iy/opengoal-ps5/releases/latest) laden, entpacken und `python ps5_setup.py` starten
+   (mit `--with-kstuff` darf es kstuff-lite laden). Es findet die PS5, laedt was fehlt (kstuff-lite, ShadowMountPlus), installiert die App und startet sie. Jederzeit
+   erneut ausfuehrbar; es erledigt nur, was noch fehlt. Die Zeile in Schritt 2 startet es ebenfalls zuerst.
+2. Spiele vom PC hinzufuegen: eine Zeile einfuegen, ein kleines Fenster oeffnet sich, `.iso`-Dateien hineinziehen:
 
 **Windows** (PowerShell):
 

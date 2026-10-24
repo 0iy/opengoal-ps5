@@ -7,6 +7,7 @@ Based on OpenGOAL (jak-project `553a713`, v0.3.x). Tested on firmware 13.60 only
 ### Added
 - Native Jak 1/2/3 port: PS5 shim (SDL replacement over EGL), controller launcher (English/German), keep-awake, quit-to-launcher flow
 - On-console ISO import with web page on port 8080, QR code, pre-checks and queue ([`docs/ONBOARDING_WEB.md`](docs/ONBOARDING_WEB.md))
+- One-command console setup (`installer/ps5_setup.py`, also `tools/ps5 setup`): finds the PS5, shows its state live, loads kstuff-lite and ShadowMountPlus when missing (pinned downloads), installs and starts the app through the `ogagent` payload
 - Installer for Windows/Linux/macOS (`installer/release_template/install.py`) and a faster game import from the PC (`installer/pc_import.py`, import window, one-line bootstrap)
 - Draw merging (`app/shim/glfix.cpp`) and asynchronous multi-draw submit; patched Mesa-to-AGC driver (`driver/ps5-opengl.patch`)
 - Experimental: FSR 1.0 upscaling with dynamic resolution, lazy mipmaps ([`docs/FSR.md`](docs/FSR.md))

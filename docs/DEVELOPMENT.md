@@ -105,7 +105,7 @@ Third-party checkouts are git-ignored. Do not commit game data, firmware, keys o
 | `perf_suite.sh` | `tools/perf_suite.py` |
 | `trace2json.py`, `trace_stages.py`, `trace_mip.py`, `multidraw_report.py` | `tools/trace/stats.py`, `stages.py`, `mip.py`, `multidraw.py` |
 | `at9enc/` | `tools/at9enc/` |
-| `pc_import.py`, `bootstrap.*`, `make_release.*`, `gui/`, `release_template/` | `installer/` |
+| `pc_import.py`, `ps5_setup.py`, `bootstrap.*`, `make_release.*`, `gui/`, `release_template/` | `installer/` |
 | `pc_import_fake.py` | `tests/gui/pc_import_fake.py` |
 | `tests_*.cpp`, `tests_*.sh`, `tests_*.py`, `tests_onboarding_web.js` | `tests/host/`, `tests/test_install_e2e.py`, `tests/test_onboarding_web.js` |
 | `qa/baseline.json` | `tests/qa/baseline.json` |
@@ -121,6 +121,6 @@ Third-party checkouts are git-ignored. Do not commit game data, firmware, keys o
 1. `python tools/ps5.py build`, then `python tests/run_all.py` (must be green).
 2. Rebuild the toolchain pack when `engine/` patches or game assets changed: `python installer/pc_import.py --make-pack installer/opengoal-ps5-pack.tgz ...`
    and put its size and sha256 into `PACK_SIZE` / `PACK_SHA256` in `installer/pc_import.py`.
-3. `bash installer/make_release.sh` (WSL) writes `release/`: `OpenGOAL-PS5.zip`, `OpenGOAL-PS5-gui.zip`, `opengoal-ps5-pack.tgz`, `bootstrap.ps1`, `bootstrap.sh`, `SHA256SUMS`.
+3. `bash installer/make_release.sh` (WSL; stops with a message when the `ogagent.elf` payload is not built) writes `release/`: `OpenGOAL-PS5.zip`, `OpenGOAL-PS5-gui.zip`, `opengoal-ps5-pack.tgz`, `bootstrap.ps1`, `bootstrap.sh`, `SHA256SUMS`.
 4. `gh release create vX.Y.Z release/OpenGOAL-PS5.zip release/OpenGOAL-PS5-gui.zip release/opengoal-ps5-pack.tgz release/bootstrap.ps1 release/bootstrap.sh release/SHA256SUMS`
    (the tag in `PACK_URL` must match).

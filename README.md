@@ -68,12 +68,12 @@ The right column is about the usual PKG route in general, not one specific tool:
 
 ## Start
 
-You need a PS5 on firmware 13.60 (the only version tested) with the ELF loader (9021), kstuff, an FTP service (2121) and ShadowMountPlus running, and a PC on the same network
-with Python 3.
+You need a PS5 on firmware 13.60 (the only version tested) with the ELF loader (port 9021) running, and a PC on the same network with Python 3.
 
-1. Download `OpenGOAL-PS5.zip` from the [latest release](https://github.com/0iy/opengoal-ps5/releases/latest) and unzip it.
-2. Install the app on the console: run `install.bat` (Windows) or `sh install.sh` (Linux, macOS), enter the PS5 address or press Enter to search.
-3. Start **OpenGOAL-PS5** on the console, then add your games from the PC. Paste one line, a small window opens, drop your `.iso` files in it:
+1. Set up the console: download `OpenGOAL-PS5.zip` from the [latest release](https://github.com/0iy/opengoal-ps5/releases/latest), unzip it and run `python ps5_setup.py`
+   (add `--with-kstuff` to let it load kstuff-lite). It finds the PS5, loads what is missing (kstuff-lite, ShadowMountPlus), installs the app and starts it. Run it again at
+   any time; it only does what is still needed. The one-liner in step 2 runs it first, too.
+2. Add your games from the PC. Paste one line, a small window opens, drop your `.iso` files in it:
 
 **Windows** (PowerShell):
 
@@ -139,7 +139,7 @@ flowchart LR
 
 | Symptom | Try |
 |---|---|
-| Installer: "[MISSING] ELF loader" or "FTP" | start the exploit, or `ftpsrv-ps5.elf`, and run the installer again |
+| Setup waits at "ELF loader" | start the exploit on the PS5; the setup continues by itself (or run it again) |
 | App refused at start (`0x80020008`) | OnionHEN was loaded first; restart the jailbreak chain without it |
 | Black screen or crash in game | turn off draw merging or async submit in the launcher settings, restart the app |
 | Import stops | keep the console awake, check the free disk space, see [`docs/ONBOARDING_WEB.md`](docs/ONBOARDING_WEB.md) |
