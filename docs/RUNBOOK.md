@@ -42,6 +42,13 @@ the app through `payloads/launchapp.elf` and `payloads/killapp.elf` via the load
 20 s while you work). `klog_dump.c` and `kstuff_state.c` are diagnostics (read the kernel log, read kstuff's enable flag; `0xffff` is normal on 13.60) and
 are built on demand. Rebuild with `bash payloads/build.sh <file.c> <out.elf>` (needs `PS5_SDK`, the ps5-payload-sdk install, and clang with lld).
 
+### Setup agent
+
+`payloads/ogagent.elf` (TCP 9099, header `X-OG-Token`) is what the one-command setup talks to instead of ftpsrv and shsrv. The PC script patches a token into the
+ELF before sending it to 9021; it stops by itself after 60 minutes, or 10 minutes after the last request once the app was launched. If a send failed, send it
+again: a second copy exits when the port is busy. `GET /v1/status` shows kernel, processes, mounts and whether the app runs; `GET /v1/log?tail=50` shows its own
+request log. Endpoints and the token layout are in `payloads/README.md`.
+
 ## Stray settings
 
 Stray controller presses in the launcher change `ps5.cfg` (resolution to 4K, for example). `tools/rplay.py` resets it; check `resolution=0` before measuring.

@@ -363,6 +363,13 @@ def t_h_install():
     return tail(p, 1)
 
 
+@check("host c: setup agent (ogagent)")
+def t_h_agent():
+    p = host_cpp("python3 tests/test_ogagent_host.py", 600)
+    assert p.returncode == 0, tail(p, 20)
+    return tail(p, 1)
+
+
 # ----------------------------------------------------------------------------------------------- driver
 def main(argv):
     if "--list" in argv:

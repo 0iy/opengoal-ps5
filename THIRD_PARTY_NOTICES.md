@@ -137,6 +137,9 @@ repository. No third-party binary is stored here.
 | `launchapp.elf` | `launchapp.c` | `7fcaa354f8b98b0d78002081ef879d5c86ad1536a604e7a70a295728a11ec8d4` | no |
 | `scan.elf` | `scan.c` | `07fa18dd2c63b9865a1f367236dde9a3c7e995005b05321e159b7dc2a1c0fb1d` | yes (bundle folder `tools`) |
 | `keepalive.elf` | `keepalive.c` | `460cbd5584644d756f6e18ac413a7c2347943b3238809d0403b19dd8e6010309` | no |
+| `ogagent.elf` | `ogagent.c` (own work, GPL-3.0-or-later) | `f910068d95be4a25de3c616e8dad49d611b6d69b5647875a5bb328d0635d7a1e` | no (written by the setup script) |
+
+`ogagent.elf` is stored with its token unpatched (32 filler bytes after the marker `OGAGENT_TOKEN:`); the hash above is of that file, the setup script patches a copy.
 
 `klog_dump.c` and `kstuff_state.c` have no prebuilt ELF. The ELF loader that receives the payloads (port 9021) is the console-side one of your
 jailbreak setup, see below.
