@@ -25,3 +25,5 @@ Remove your console address and account names from logs before posting. Do not a
 - No code that writes kernel flags, bypasses game protection or supports piracy.
 
 Layout, `tools/ps5` commands and build: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+
+Be kind: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).

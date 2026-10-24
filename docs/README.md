@@ -1,13 +1,15 @@
 # Documentation
 
+New here? Read [`INSTALL.md`](INSTALL.md), then [`USER_GUIDE.md`](USER_GUIDE.md). Everything else is for developers or background.
+
 ## Use it
 
 | Doc | Content |
 |---|---|
 | [`INSTALL.md`](INSTALL.md) | prepare the console, install the app, import your games from the PC (English and German) |
 | [`USER_GUIDE.md`](USER_GUIDE.md) | launcher controls, adding games, settings, troubleshooting |
-| [`ONBOARDING_WEB.md`](ONBOARDING_WEB.md) | the ISO import page on the console and its checks |
-| [`PC_IMPORT.md`](PC_IMPORT.md) | the faster import from the PC: format, API, tests |
+| [`ONBOARDING_WEB.md`](ONBOARDING_WEB.md) | background: the ISO import page on the console and its checks |
+| [`PC_IMPORT.md`](PC_IMPORT.md) | background: the faster import from the PC (format, API, tests) |
 
 ## Build it
 

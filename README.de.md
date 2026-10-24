@@ -7,60 +7,33 @@
   <img src="https://img.shields.io/badge/release-v0.1.0-f97316" alt="Release v0.1.0">
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0">
   <img src="https://img.shields.io/badge/PS5%20firmware-13.60-1f6feb" alt="Firmware 13.60">
-  <img src="https://img.shields.io/badge/Jak%203-60%20fps-2da44e" alt="Jak 3 mit 60 fps">
+  <img src="https://img.shields.io/badge/status-experimentell-d97706" alt="Experimentell">
 </p>
 
 <p align="center">
   <a href="#start">Start</a> ·
   <a href="#stand">Stand</a> ·
+  <a href="#mithelfen-und-fehler-melden">Fehler melden</a> ·
   <a href="docs/INSTALL.md">Installation</a> ·
-  <a href="docs/USER_GUIDE.md">Anleitung</a> ·
   <a href="docs/README.md">Doku</a> ·
   <a href="README.md">English</a>
 </p>
 
-**Jak and Daxter** 1, 2 und 3 nativ auf einer gejailbreakten PlayStation 5. Port der [OpenGOAL](https://github.com/open-goal/jak-project)-Engine mit
-Controller-Launcher, schnellem Spielimport vom PC und einem angepassten OpenGL-zu-AGC-Grafiktreiber. Keine Emulation.
-
-> **Keine Spieldateien enthalten.** Du brauchst deine eigenen, legal erworbenen Discs als `.iso`-Abbild. Das Projekt unterstuetzt keine Raubkopien.
+**Jak and Daxter** 1, 2 und 3 nativ auf einer gejailbreakten PlayStation 5. Port der [OpenGOAL](https://github.com/open-goal/jak-project)-Engine mit Controller-Launcher,
+schnellem Spielimport vom PC und einem angepassten OpenGL-zu-AGC-Grafiktreiber. Keine Emulation. **Keine Spieldateien enthalten**: du brauchst deine eigenen, legal erworbenen Discs als `.iso`.
 
 > [!WARNING]
-> **Experimentell, in der Testphase.** Neue Software, die auf deiner Konsole instabil oder unzuverlaessig sein kann. Getestet auf genau einer Konsole (CFI-2016, Firmware 13.60). Rechne mit Fehlern, Abstuerzen und Grafikfehlern; Setup-Skript und Release sind frisch und koennen auf Weisen scheitern, die ich nicht kenne. **Tester, Feedback, Issues und Pull Requests sind sehr willkommen**: siehe [Mithelfen](#mithelfen).
-
-<table>
-<tr>
-<td width="33%" valign="top"><b>60 fps</b><br>Jak 3 liegt am vsync. Jak 2 erreicht in der Stadt 50 bis 58, vorher 32.</td>
-<td width="33%" valign="top"><b>In etwa einer Minute spielbar</b><br>Der PC erledigt die Arbeit und sendet das fertige Spiel. Jak 1: 63 s gemessen.</td>
-<td width="33%" valign="top"><b>Fuer den Controller gemacht</b><br>Launcher, Einstellungen und Import gehen vom Sofa aus, Deutsch und Englisch.</td>
-</tr>
-<tr>
-<td width="33%" valign="top"><b>FSR 1.0 und dynamische Aufloesung</b><br>Unter Ausgabegroesse rendern und hochskalieren. Experimentell.</td>
-<td width="33%" valign="top"><b>Folgt OpenGOAL</b><br>Ein Sync-Werkzeug wendet alle Patches neu an und meldet, was bricht.</td>
-<td width="33%" valign="top"><b>Getestet</b><br>Ein Befehl fuehrt 18 Offline-Pruefungen aus. Eine QA-Pipeline vergleicht fps und Screenshots.</td>
-</tr>
-</table>
-
-<p align="center">
-<img src="docs/img/jak2.png" width="100%" alt="Jak II auf einer PS5">
-</p>
-
-<p align="center">
-<img src="docs/img/launcher.png" width="49%" alt="Launcher"> <img src="docs/img/settings.png" width="49%" alt="Einstellungen">
-<img src="docs/img/onboarding.png" width="49%" alt="Spielimport"> <img src="docs/img/jak3.png" width="49%" alt="Jak 3">
-</p>
-
-<p align="center"><img src="docs/img/launcher-tour.gif" width="70%" alt="Launcher tour"><br><sub>Launcher-Rundgang, von einer Konsole aufgenommen: Spiele wechseln, Einstellungen und Steuerung.</sub></p>
-
-<sub>Der Screenshot der Import-Seite zeigt simulierte Werte (es lief kein Import); die anderen stammen von einer Konsole.</sub>
+> **Experimentell, in der Testphase.** Neue Software, die auf deiner Konsole instabil sein kann; getestet auf genau einer Konsole (CFI-2016, Firmware 13.60). Rechne mit Fehlern und Grafikfehlern.
+> **Tester, Feedback, Issues und Pull Requests sind sehr willkommen.** Unabhaengiges Fanprojekt, nicht verbunden mit Sony, Naughty Dog oder dem OpenGOAL-Team:
+> Fehler dieses Ports bitte [hier](https://github.com/0iy/opengoal-ps5/issues/new/choose) melden, nicht bei OpenGOAL.
 
 ## Start
 
-**Du brauchst:** eine PS5 mit Firmware 13.60 (einzige getestete Version) und einem Jailbreak, der den ELF-Loader auf Port 9021 startet, einen PC im selben Netz (Windows, macOS oder Linux)
-mit Python 3 (Windows: der Einzeiler sagt dir, wenn es fehlt) und deine Spiele als unveraenderte `.iso`-Abbilder.
+**Du brauchst:** eine PS5 mit Firmware 13.60 und einem Jailbreak, der den ELF-Loader auf Port 9021 startet, einen PC im selben Netz (Windows, macOS oder Linux) mit Python 3 und deine Spiele als `.iso`-Abbilder.
 
 1. **Jailbreak auf der PS5 starten**, bis der ELF-Loader lauscht (Port 9021). OnionHEN nicht vor dem Start der App laden.
-2. **Eine Zeile am PC einfuegen.** Sie findet die PS5, laedt was fehlt (ShadowMountPlus, kstuff-lite nach Rueckfrage), installiert und startet die App und oeffnet dann das Import-Fenster.
-   `.iso`-Dateien hineinziehen. Etwa eine Minute spaeter ist das Spiel spielbar (Jak 1 gemessen: 63 s).
+2. **Eine Zeile am PC einfuegen.** Sie findet die PS5, laedt was fehlt, installiert und startet die App und oeffnet das Import-Fenster. `.iso`-Dateien hineinziehen.
+   Etwa eine Minute spaeter ist das Spiel spielbar.
 
 **Windows** (PowerShell):
 
@@ -74,53 +47,44 @@ irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 |
 curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
 ```
 
-Jederzeit wiederholbar: es erledigt nur, was noch fehlt. Es startet die Konsole nie neu, schreibt keine Kernel-Flags und enthaelt kstuff-lite nicht (kommt vom Release des Autors, nur mit deiner Zustimmung).
-Lieber erst lesen? `OpenGOAL-PS5.zip` vom [neuesten Release](https://github.com/0iy/opengoal-ps5/releases/latest) laden, entpacken, `python ps5_setup.py` starten
-(`--debug` schreibt ein Log fuer Fehlerberichte). Oder per Handy: Adresse und QR-Code der App oeffnen und die `.iso`-Dateien dort senden (langsamer). Mehr: [`docs/INSTALL.md`](docs/INSTALL.md) (Abschnitt Deutsch).
+Jederzeit wiederholbar: es erledigt nur, was noch fehlt. Es startet die Konsole nie neu, schreibt keine Kernel-Flags und enthaelt kstuff-lite nicht (kommt vom Release des Autors, nur nach Rueckfrage).
+Lieber erst lesen? `OpenGOAL-PS5.zip` vom [neuesten Release](https://github.com/0iy/opengoal-ps5/releases/latest) laden, entpacken und `python ps5_setup.py` starten (`--debug` schreibt ein Log fuer Fehlerberichte).
+Mehr und der manuelle Weg: [`docs/INSTALL.md`](docs/INSTALL.md) (Abschnitt Deutsch).
+
+<p align="center">
+<img src="docs/img/jak2.png" width="100%" alt="Jak II auf einer PS5">
+</p>
+
+<p align="center">
+<img src="docs/img/launcher.png" width="32%" alt="Launcher"> <img src="docs/img/settings.png" width="32%" alt="Einstellungen"> <img src="docs/img/jak3.png" width="32%" alt="Jak 3">
+</p>
 
 ## Stand
 
-v0.1.0, frueher Release. Gemessen bei 1080p, vsync 60 Hz, mit Draw-Zusammenfassung und asynchronem GPU-Senden ([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)).
+v0.1.0, frueher Release. Gemessen bei 1080p, vsync 60 Hz ([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)).
 
 | Spiel | Zustand | Bildrate |
 |---|---|---|
 | Jak 1 | 🟢 spielbar | 58 bis 60 fps (Titel und Intro, PAL-Disc vom PC importiert) |
-| Jak 2 | 🟡 spielbar, einzelne Grafikfehler | etwa 50 bis 58 fps in der Stadt (32 fps ohne) |
-| Jak 3 | 🟡 spielbar, einzelne Grafikfehler | 59 bis 60 fps im Spiel (43 fps ohne) |
+| Jak 2 | 🟡 spielbar, einzelne Grafikfehler | etwa 50 bis 58 fps in der Stadt |
+| Jak 3 | 🟡 spielbar, einzelne Grafikfehler | 59 bis 60 fps im Spiel |
 
-Bekannt: das Ein-Befehl-Setup ist neu und nur auf einer Konsole geprueft; einzelne Grafikfehler, gelegentliche Ruckler. FSR-Hochskalierung ist experimentell ([`docs/FSR.md`](docs/FSR.md)).
+Bekannt: das Ein-Befehl-Setup ist neu und nur auf einer Konsole geprueft; einzelne Grafikfehler; gelegentliche Ruckler; 4K ist deutlich langsamer als 1080p. FSR-Hochskalierung ist experimentell ([`docs/FSR.md`](docs/FSR.md)).
 
-## Warum dieser Port
+## Mithelfen und Fehler melden
 
-OpenGOAL-PS5 fuehrt die Spiele als native PS5-Programme aus. Es gibt keinen Emulator dazwischen und nichts, was pro Spiel konvertiert oder signiert werden muss.
+Echtes Feedback ist gerade das Wichtigste, auch wenn alles lief.
 
-| | OpenGOAL-PS5 | Spiel als Paket (PKG) installieren |
-|---|---|---|
-| Pro Spiel | eine Zeile einfuegen, `.iso` hineinziehen | Abbild konvertieren, Paket bauen, installieren |
-| Bis spielbar | etwa eine Minute (Jak 1 gemessen: 63 s) | haengt vom Werkzeug ab; jedes Spiel ist ein eigenes Paket |
-| Bild | nativ in 1080p, 1440p oder 4K, Breitbild, FSR-Hochskalierung | vom Paket oder Emulator vorgegeben |
-| Bildrate | Jak 3 mit 60 fps, Jak 2 mit 50 bis 58, Jak 1 mit 58 bis 60 (gemessen) | hier nicht gemessen |
-| Menues | Controller-Launcher, Optionen ohne Fenster- und Maus-Eintraege | was das Original oder der Emulator zeigt |
-| Updates | eine App; Engine-Patches folgen OpenGOAL ueber ein Sync-Werkzeug | pro Spiel neu paketieren |
-| Voraussetzung | gejailbreakte PS5 mit 13.60, eigene Discs | Paket-Werkzeug oder Store-App, eigene Discs |
+- **Ausprobiert?** [Testbericht](https://github.com/0iy/opengoal-ps5/issues/new?template=test-report.yml) mit Konsolenmodell, Firmware und was ging. `ps5_setup_debug.log` anhaengen (Tokens sind maskiert; Privates entfernen).
+- **Fehler gefunden?** [Fehlerbericht](https://github.com/0iy/opengoal-ps5/issues/new?template=bug.yml).
+- **Fragen oder Ideen?** [Discussions](https://github.com/0iy/opengoal-ps5/discussions).
+- **Mitprogrammieren?** Pull Requests sind willkommen: [`CONTRIBUTING.md`](CONTRIBUTING.md). Doku, Setup-Skript und Tests brauchen keine Konsole (`python tests/run_all.py`); Engine, Treiber und App brauchen eine PS5 ([`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)).
 
-Die rechte Spalte beschreibt den ueblichen PKG-Weg allgemein, kein bestimmtes Werkzeug: nur die linke Spalte hat dieses Projekt gemessen.
-
-## Mithelfen
-
-Echtes Feedback ist gerade das Wichtigste. Sag bitte, was passiert ist, auch wenn alles lief:
-
-- [Testbericht](https://github.com/0iy/opengoal-ps5/issues/new?template=test-report.yml) mit Konsolenmodell, Firmware und was ging oder nicht. Setup mit `--debug` starten und `ps5_setup_debug.log` anhaengen (Tokens sind maskiert; Privates entfernen).
-- Fehler gefunden? [Fehlerbericht](https://github.com/0iy/opengoal-ps5/issues/new?template=bug.yml).
-- Etwas verbessern? Pull Requests sind willkommen, siehe [`CONTRIBUTING.md`](CONTRIBUTING.md). Kleine, gemessene Aenderungen lassen sich am leichtesten pruefen.
-
-## Entwicklung
-
-Aufbau und Build: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md), Beitraege: [`CONTRIBUTING.md`](CONTRIBUTING.md), Tests: `python tests/run_all.py`.
+Aufbau, Ordner und Architektur: [`docs/README.md`](docs/README.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Sicherheitsluecken: [`SECURITY.md`](SECURITY.md).
 
 ## Rechtliches
 
-Unabhaengiges Fanprojekt, **nicht verbunden mit** Sony Interactive Entertainment, Naughty Dog oder dem OpenGOAL-Team. Marken gehoeren ihren
-Inhabern. Das Repository enthaelt keine Spieldaten, Firmware, Schluessel oder Konsolen-Dumps. Nur mit eigenen Spielen und eigener Konsole nutzen.
+Unabhaengiges Fanprojekt, **nicht verbunden mit** Sony Interactive Entertainment, Naughty Dog oder dem OpenGOAL-Team. Marken gehoeren ihren Inhabern. Das Repository enthaelt keine Spieldaten,
+Firmware, Schluessel oder Konsolen-Dumps. Nur mit eigenen Spielen und eigener Konsole nutzen.
 
 Lizenz: GPL-3.0-or-later ([`LICENSE`](LICENSE)). Drittkomponenten: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
