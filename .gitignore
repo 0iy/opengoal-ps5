@@ -48,3 +48,5 @@ shader_cache/
 nul
 /.deployed_sha1
 /docs/assistant_memory/
+/tests/conv_test
+/tests/qr_test

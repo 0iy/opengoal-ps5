@@ -97,7 +97,7 @@ def linux_shell():
 # ----------------------------------------------------------------------------------------------- static checks
 @check("repository layout")
 def t_layout():
-    allowed = {"README.md", "README.de.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md", ".gitignore",
+    allowed = {"README.md", "README.de.md", "LICENSE", "CHANGELOG.md", "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md", "LICENSES", ".gitignore",
                "app", "driver", "engine", "payloads", "tools", "installer", "tests", "art", "docs"}
     extra = sorted({f.split("/")[0] for f in files()} - allowed)
     assert not extra, "unexpected entries in the repository root: " + ", ".join(extra)
@@ -190,7 +190,8 @@ def lint_rules():
         ("MAC address", re.compile(r"\b[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}\b"), None),
         ("user path", re.compile(r"[A-Za-z]:[\\/]+Users[\\/]|/Users/[A-Za-z]|/mnt/[a-z]/Users|(?<![\w/.])/home/(?!runner\b)[A-Za-z]"), None),
         ("e-mail", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}"), {"tools/at9enc/atrac9tab.h"}),
-        ("open item", re.compile(j([r"\bTO", r"DO\b|\bFIX", r"ME\b|placehol", r"der|<own", r"er>|<re", r"po>|x", r"xxx"])), None),
+        ("open item", re.compile(j([r"\bTO", r"DO\b|\bFIX", r"ME\b|placehol", r"der|<own", r"er>|<re", r"po>|x", r"xxx"])),
+         {"LICENSES/BSD-2-Clause.txt", "LICENSES/BSD-3-Clause.txt", "LICENSES/ISC.txt"}),  # SPDX texts keep their owner field
     ]
 
 
@@ -271,6 +272,8 @@ def t_sync():
             assert a["count"] == "any" or isinstance(a["count"], int), "bad count in anchor " + a["id"]
         for m in s.get("markers", []):
             assert m["file"] in touches, "marker file %s not in touches of %s" % (m["file"], s["id"])
+    scripts = {f for f in os.listdir(os.path.join(ROOT, "engine")) if f.startswith("patch_") and f.endswith(".py") or f == "apply_ps5_patches.py"}
+    assert scripts <= {s["path"] for s in man["steps"]}, "patch script without a manifest step: " + ", ".join(sorted(scripts - {s["path"] for s in man["steps"]}))
     p = run([PY, "engine/sync_upstream.py", "--help"], timeout=60)
     assert p.returncode == 0, tail(p)
     return "%d steps, %d anchors" % (len(man["steps"]), len(anchors))
