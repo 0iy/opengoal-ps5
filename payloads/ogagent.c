@@ -249,7 +249,7 @@ static int plat_launch(const char* t) {  // same steps as launchapp.c
   pthread_mutex_lock(&g_lncmu);
   int r = sceLncUtilLaunchApp(t, 0, &p);
   pthread_mutex_unlock(&g_lncmu);
-  return r;
+  return r > 0 ? 0 : r;  // a positive answer is the new app id: success
 }
 static void plat_kill(const char* t, int* app, int* r1, int* r2) {  // same steps as killapp.c
   lnc_init();

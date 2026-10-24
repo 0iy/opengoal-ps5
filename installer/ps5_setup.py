@@ -467,6 +467,7 @@ def sweep(hosts, ports, timeout=0.4, workers=300):
         for (h, p), ok in zip(jobs, ex.map(lambda j: tcp_open(j[0], j[1], timeout), jobs)):
             if ok:
                 out.setdefault(h, set()).add(p)
+    dbg("sweep %d hosts x %d ports -> %s" % (len(hosts), len(ports), {h: sorted(v) for h, v in out.items()}))
     return out
 
 
@@ -489,6 +490,7 @@ def grab(ip, port, send=b"", wait=0.5, maxb=4096):
                 data += b
     except OSError:
         pass
+    dbg("grab %s:%d sent=%dB got=%dB %r" % (ip, port, len(send), len(data), data[:80]))
     return data
 
 
@@ -534,12 +536,27 @@ def shsrv_ps(ip, port):
     return names or None
 
 
+DEBUG = {"on": False, "log": None, "t0": 0.0}
+
+
+def dbg(text):
+    """--debug: one line per network action, to setup.log and to the debug file."""
+    if DEBUG["on"] and DEBUG["log"]:
+        DEBUG["log"].write("DBG %7.2fs %s" % (time.time() - DEBUG["t0"], text))
+
+
 def http_call(ip, port, method, path, body=None, headers=None, timeout=6):
     c = hc.HTTPConnection(ip, port, timeout=timeout, blocksize=262144)
+    t = time.time()
     try:
         c.request(method, path, body=body, headers=headers or {})
         r = c.getresponse()
-        return r.status, {k.lower(): v for k, v in r.getheaders()}, r.read()
+        data = r.read()
+        dbg("http %s %s:%d%s -> %d %dB %.0fms %s" % (method, ip, port, path.split("&token")[0][:120], r.status, len(data), (time.time() - t) * 1000, data[:100] if r.status >= 400 else ""))
+        return r.status, {k.lower(): v for k, v in r.getheaders()}, data
+    except Exception as e:
+        dbg("http %s %s:%d%s FAILED %s: %s" % (method, ip, port, path[:120], type(e).__name__, e))
+        raise
     finally:
         c.close()
 
@@ -814,7 +831,9 @@ class Agent:
     def launch(self):
         """(accepted, launch code): the agent answers 500 with the code when the console refuses."""
         code, _, data = self.call("POST", "/v1/launch", {"title": APP_ID})
-        return code == 200, (json_or_none(data) or {}).get("launch", 0)
+        j = json_or_none(data) or {}
+        lc = j.get("launch", 0)
+        return code == 200 or 0 < lc < 0x80000000, lc  # an older agent reports the new app id as a refusal
 
     def kill(self):
         self.ok("POST", "/v1/kill", {"title": APP_ID})
@@ -1414,6 +1433,7 @@ def parse_args(argv):
     ap.add_argument("--no-agent", action="store_true", help="fallback: ftpsrv + install.py instead of the agent")
     ap.add_argument("--max-wait", type=float, default=900, help="seconds to wait for the console in one step before giving up (default 900)")
     ap.add_argument("--no-color", action="store_true")
+    ap.add_argument("--debug", action="store_true", help="log every probe and request with timings (setup.log in the data folder, copy in ./ps5_setup_debug.log)")
     for h in ("--interval", "--settle"):
         ap.add_argument(h, type=float, default=1.5 if h == "--interval" else 20.0, help=argparse.SUPPRESS)
     ap.add_argument("--flush", type=int, default=25, help=argparse.SUPPRESS)
@@ -1433,6 +1453,9 @@ def main(argv=None):
     a = parse_args(sys.argv[1:] if argv is None else argv)
     lang = a.lang or system_lang()
     log, t0 = Log(), time.time()
+    if a.debug:
+        DEBUG.update(on=True, log=log, t0=t0)
+        dbg("args %s" % {k: v for k, v in vars(a).items() if k != "token"})
     if a.json:
         ui = JsonUI(lang, log, t0)
     elif sys.stdout.isatty():
@@ -1458,6 +1481,12 @@ def main(argv=None):
     finally:
         ui.close()
         log.close()
+        if a.debug:
+            try:
+                import shutil
+                shutil.copyfile(os.path.join(home(), "setup.log"), "ps5_setup_debug.log")
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":
