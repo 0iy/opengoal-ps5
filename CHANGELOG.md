@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1 (unreleased)
+## 0.1.1 (2026-10-28)
 
 ### Added
 - Updating: run the one-line install again. The setup compares the console's version (`app` in `/api/info`, from the `VERSION` file uploaded with the app) with the release and updates by itself when it is older, says "up to date" when equal and refuses to downgrade. It never restarts the app while an import runs.
