@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2 (2026-10-28)
+
+### Fixed
+- Fresh console: "No such file or directory at mkdir /data/opengoal/jak2/data.new" and "Permission denied: /data/opengoal/config/OpenGOAL/jak2/settings". The app now creates the game and config folders at start (writable for everyone) and logs a failing `mkdir` with errno (#5)
+
 ## 0.1.1 (2026-10-28)
 
 ### Added
