@@ -409,6 +409,8 @@ static int mkdir_p(const char* path, mode_t mode) {
     if (t[i] != '/' && t[i] != 0) continue;
     char c = t[i]; t[i] = 0;
     if (mkdir(t, mode) && errno != EEXIST) return -1;
+    // the app runs as another user than this agent: its data folders (also ones an older setup made as 0755) must stay writable for it
+    if (!strncmp(t, "/data/opengoal", 14) && (t[14] == 0 || t[14] == '/')) chmod(t, 0777);
     t[i] = c;
   }
   struct stat st;

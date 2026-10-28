@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 (2026-10-28)
+
+### Fixed
+- Console where the app could not create folders under `/data/opengoal` (no `ps5.log`, import "No such file or directory"): the setup agent made `/data/opengoal` as `0755` for another user. It now makes and repairs these folders as `0777`, and the launcher settings file as `0666` (#5)
+- `/api/log` explains what to check when the log is missing
+
 ## 0.1.2 (2026-10-28)
 
 ### Fixed

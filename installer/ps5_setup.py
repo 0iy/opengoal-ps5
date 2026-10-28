@@ -1248,7 +1248,7 @@ class Setup:
         if ag.get_file(REMOTE_CFG) is not None:
             return
         data = ("resolution=0\nrefresh=60\nlast_game=0\nlang=%d\n" % (1 if self.lang == "de" else 0)).encode()
-        ag.ok("PUT", "/v1/file", {"path": REMOTE_CFG, "size": len(data), "mode": "0644"}, data)
+        ag.ok("PUT", "/v1/file", {"path": REMOTE_CFG, "size": len(data), "mode": "0666"}, data)
         self.ui.emit("progress", text="created %s" % REMOTE_CFG, force=True)
 
     def step_launch(self):

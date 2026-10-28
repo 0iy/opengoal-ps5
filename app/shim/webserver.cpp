@@ -601,7 +601,7 @@ void* serve(void* arg) {
           txt.resize(std::fread(&txt[0], 1, txt.size(), f));
           std::fclose(f);
         } else {
-          txt = "cannot open /data/opengoal/log/ps5.log: " + std::string(strerror(errno)) + "\n";
+          txt = "cannot open /data/opengoal/log/ps5.log: " + std::string(strerror(errno)) + "\nThe app cannot write /data/opengoal. Check owner and permissions of /data/opengoal (FTP) and run the setup again.\n";
         }
         respond(fd, 200, "text/plain; charset=utf-8", txt, keep);
       } else if (method == "PUT" && path == "/api/install" && gi >= 0) {
