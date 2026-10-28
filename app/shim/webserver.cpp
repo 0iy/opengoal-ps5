@@ -245,6 +245,7 @@ void mkdir_p(const char* path) {
     if (*c == '/' && p.size() > 1) mkdir(p.c_str(), 0777);
   }
   mkdir(path, 0777);
+  chmod(path, 0777);  // umask or another owner must not leave the folder unwritable for the game process
 }
 
 void remove_upload_files(const std::string& game) {

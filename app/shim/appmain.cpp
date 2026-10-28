@@ -23,7 +23,11 @@ void ps5_inject_file_start();
 void ps5_log_import_addrs();
 extern "C" void ps5sdl_set_display_mode(int width, int height, int hz);
 
-static void ensure_dir(const char* path) { mkdir(path, 0777); }
+// 0777 regardless of umask: folders made by another user or an older build must stay writable for the game process
+static void ensure_dir(const char* path) {
+  if (mkdir(path, 0777) != 0 && errno != EEXIST) ps5_log("mkdir %s failed: errno %d (%s)", path, errno, strerror(errno));
+  chmod(path, 0777);
+}
 
 extern "C" int sceSystemServiceLoadExec(const char* path, char* const argv[]);
 
@@ -97,6 +101,11 @@ int ps5_app_main() {
   ensure_dir("/data/opengoal");
   ensure_dir("/data/opengoal/log");
   ensure_dir("/data/opengoal/config");
+  ensure_dir("/data/opengoal/config/OpenGOAL");  // the engine writes <game>/settings here and fails with "Permission denied" when the folder is missing
+  for (const char* g : {"jak1", "jak2", "jak3"}) {
+    ensure_dir((std::string("/data/opengoal/config/OpenGOAL/") + g).c_str());
+    ensure_dir((std::string("/data/opengoal/") + g).c_str());
+  }
   // compiled shaders are kept between runs (see the driver's shader cache); first use of a shader no longer stalls
   ensure_dir("/data/opengoal/cache");
   ensure_dir("/data/opengoal/cache/shaders");
