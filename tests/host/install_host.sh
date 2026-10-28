@@ -3,7 +3,7 @@
 # to a temp dir, starts it, then drives it with the real installer/pc_import.py upload code (tests/test_install_e2e.py).
 set -e
 H=$(cd "$(dirname "$0")" && pwd); R=$(cd "$H/../.." && pwd); T=$(mktemp -d); cd "$T"   # R = repository root
-sed "s#/data/opengoal#$T/og#g" "$R/app/shim/webserver.cpp" > ws.cpp
+sed -e "s#/data/opengoal#$T/og#g" -e "s#/data/homebrew#$T/hb#g" "$R/app/shim/webserver.cpp" > ws.cpp
 cat > stub.cpp <<'EOF'
 #include <cstdarg>
 #include <cstring>
@@ -26,4 +26,4 @@ g++ -std=c++17 -O2 -Wall -Wextra -I "$R/app/shim" ws.cpp stub.cpp -o ws -lpthrea
 g++ -std=c++17 -O2 -Wall -Wextra -I "$R/app/shim" "$H/install_test.cpp" -o rx
 mkdir -p og
 ./ws & PID=$!; trap "kill $PID 2>/dev/null; rm -rf $T" EXIT; sleep 1
-WS_PORT=18091 WS_ROOT="$T/og" RX_BIN="$T/rx" python3 "$R/tests/test_install_e2e.py"
+WS_PORT=18091 WS_ROOT="$T/og" WS_HB="$T/hb" RX_BIN="$T/rx" python3 "$R/tests/test_install_e2e.py"

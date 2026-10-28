@@ -194,11 +194,14 @@ class FakeConsole:
         if self.app_running:
             return
 
+        console = self
+
         class H(http.server.BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
 
             def do_GET(self):
-                body = json.dumps({"install_api": 1, "max_frame": 16777216, "busy": False}).encode() if self.path == "/api/info" else b"{}"
+                body = json.dumps({"install_api": 1, "max_frame": 16777216, "busy": False, "app": console.files.get(APP + "/VERSION", b"").decode().strip(),
+                                   "formats": {}}).encode() if self.path == "/api/info" else b"{}"
                 self.send_response(200 if self.path == "/api/info" else 404)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()

@@ -10,9 +10,10 @@ Does the heavy work on the PC with the official OpenGOAL tools (ISO extract, dat
   pc_import.py --selftest                                         (offline tests of the stream format)
 """
 import argparse, collections, hashlib, io, json, os, platform, re, shutil, socket, struct, subprocess, sys, tarfile, tempfile
-import threading, time, urllib.request, zipfile, zlib
+import threading, time, traceback, urllib.request, zipfile, zlib
 from concurrent.futures import ThreadPoolExecutor
 
+DATA_FORMAT = 1            # layout of an installed game. Raise it (here and in ps5_setup.py) when a new app cannot read games installed by an older import
 MAGIC = b"PS5IMP01"
 FRAME = 4 << 20            # raw bytes per frame
 C_RAW, C_DEFLATE, C_END = 0, 1, 255
@@ -47,6 +48,62 @@ class Fail(Exception):
         self.reason = reason
 
 
+# ---------------------------------------------------------------------------------------------------------- debug log
+class DebugLog:
+    """Every run writes <cache>/last_import.log (overwritten per run): environment, arguments, all progress, every tool line, every
+    request to the console, the traceback of a crash and, after a failure, the console's own log. Attach that one file to a bug report."""
+    def __init__(self):
+        self.f, self.path, self.t0 = None, None, time.time()
+
+    def open(self, cache_dir):
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            self.path = os.path.join(cache_dir, "last_import.log")
+            self.f = open(self.path, "w", encoding="utf-8", errors="replace")
+        except OSError:
+            self.f = None
+
+    def __call__(self, text):
+        if self.f:
+            self.f.write("%8.2fs %s\n" % (time.time() - self.t0, text))
+            self.f.flush()
+
+
+DBG = DebugLog()
+
+# errno values of the console (FreeBSD numbering) -> what to do about it
+ERRNO_HINT = {
+    1: "permission denied (EPERM): the app may not write there; relaunch the exploit and the app",
+    2: "a folder is missing (ENOENT)", 5: "disk I/O error (EIO): the console storage reports a hardware or filesystem problem",
+    13: "permission denied (EACCES): /data/opengoal/<game> is not writable. Delete that folder over FTP and try again",
+    17: "a file or folder is in the way (EEXIST). Delete /data/opengoal/<game> over FTP and try again",
+    20: "a file is where a folder should be (ENOTDIR). Delete /data/opengoal/<game> over FTP and try again",
+    21: "a folder is where a file should be (EISDIR). Delete /data/opengoal/<game> over FTP and try again",
+    24: "too many open files (EMFILE): restart the app", 28: "the console is out of free space (ENOSPC)",
+    30: "the filesystem is read-only (EROFS): /data is not writable in this setup", 63: "a file name is too long (ENAMETOOLONG)",
+    66: "a leftover folder is not empty (ENOTEMPTY). Delete /data/opengoal/<game> over FTP and try again",
+    69: "disk quota exceeded (EDQUOT)",
+}
+
+
+def console_fail(code, j, body):
+    """One readable sentence for an error answer of the console (json from handle_install)."""
+    err, eno = j.get("error", "install"), j.get("errno", 0)
+    if err == "io" and eno:
+        msg = "the console could not write its files: %s (errno %s) at '%s'. %s" % (j.get("why", "?"), eno, j.get("where", "?"), ERRNO_HINT.get(eno, ""))
+    elif err == "busy":
+        msg = "the console is busy with another import. Wait for it to finish or restart the app"
+    elif err == "nogame":
+        msg = "the game is not installed on the console yet (needed to add voice languages)"
+    elif err in ("total", "bad_contents"):
+        msg = "the console rejected the data stream (%s). The PC and console versions may not match" % err
+    elif err == "no_space":
+        msg = "the console is out of free space"
+    else:
+        msg = "the console refused the install (%s)" % err
+    return "%s [HTTP %d %s]" % (msg.strip(), code, body[:300].decode("utf-8", "replace") if isinstance(body, bytes) else body)
+
+
 # ---------------------------------------------------------------------------------------------------------- progress
 class Reporter:
     def __init__(self, json_mode, weights):
@@ -66,6 +123,8 @@ class Reporter:
         if not force and phase == self.cur and now - self.last < 0.2 and pct < 100:
             return
         self.cur, self.last = phase, now
+        if force or phase in ("done", "failed") or pct in (0, 100):
+            DBG("[%s %d%%] %s" % (phase, pct, msg))
         ov = 100 if phase == "done" else self.overall(phase, pct)
         rec = {"phase": phase, "percent": int(pct), "overall": ov, "speed_bps": int(kw.get("speed_bps", self.speed)),
                "eta_s": int(kw.get("eta_s", self.eta)), "elapsed_s": round(now - self.t0, 1), "message": msg, "game": self.game, "serial": self.serial}
@@ -144,9 +203,8 @@ def sha256_file(p):
 
 def ensure_tools(cache, tools_dir, rep):
     """Returns the directory that contains extractor/goalc (+ data/). Downloads the official release once, sha256-verified."""
-    if tools_dir:
-        if not os.path.isfile(os.path.join(tools_dir, exe("extractor"))):
-            raise Fail("tools", "no %s in %s" % (exe("extractor"), tools_dir))
+    # The GUIs always pass <home>/tools, which does not exist on a fresh install: fall back to the official download then.
+    if tools_dir and os.path.isfile(os.path.join(tools_dir, exe("extractor"))):
         return tools_dir
     key = platform_key()
     name, size, want = TOOLS[key]
@@ -591,17 +649,20 @@ def load_codepack(path):
 def run_tool(rep, phase, cmd, parse, cwd=None):
     """Runs a tool, feeds its stdout lines to parse(line)->percent|None, returns the tail of the log on failure."""
     tail = collections.deque(maxlen=25)
+    DBG("run %s: %s (cwd %s)" % (phase, subprocess.list2cmdline(cmd), cwd or os.getcwd()))
     try:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd)
     except OSError as e:
         raise Fail("tools", "cannot start %s: %s" % (cmd[0], e))
     for raw in p.stdout:
         line = re.sub(r"\x1b\[[0-9;]*m", "", raw.decode("utf8", "replace")).rstrip()
+        DBG("  | " + line)
         tail.append(line)
         pc = parse(line)
         if pc is not None:
             rep.emit(phase, pc, phase)
     rc = p.wait()
+    DBG("run %s: exit %d" % (phase, rc))
     if rc != 0:
         raise Fail(phase, "%s failed (exit %d): %s" % (phase, rc, " | ".join(list(tail)[-6:])))
 
@@ -703,7 +764,21 @@ def http_json(host, port, method, path, timeout=5):
         d += b
     s.close()
     head, _, body = d.partition(b"\r\n\r\n")
+    DBG("%s %s:%s%s -> %s %r" % (method, host, port, path, head.split()[1:2], body[:300] if len(body) < 4096 else "<%d bytes>" % len(body)))
     return int(head.split()[1]), body
+
+
+def fetch_console_log(host, port, rep=None):
+    """After a failure: append the tail of the console's ps5.log to the debug log (GET /api/log, newer apps only)."""
+    try:
+        code, body = http_json(host, port, "GET", "/api/log?kb=256", timeout=10)
+    except (OSError, IndexError, ValueError) as e:
+        DBG("console log not available: %s" % e)
+        return
+    if code == 200:
+        DBG("---- console ps5.log (last 256 KB) ----\n" + body.decode("utf-8", "replace") + "\n---- end of console log ----")
+    else:
+        DBG("console log not available: HTTP %d (app too old for /api/log)" % code)
 
 
 def check_console(host, port):
@@ -719,7 +794,7 @@ def check_console(host, port):
 def upload(rep, host, port, game, entries, total, jobs, mode, meta, phase="upload"):
     t0 = time.time()
     sent = [0]
-    q = "game=%s&total=%d&mode=%s&serial=%s&region=%s" % (game, total, mode, meta.get("serial", ""), meta.get("region", ""))
+    q = "game=%s&total=%d&mode=%s&serial=%s&region=%s&format=%d" % (game, total, mode, meta.get("serial", ""), meta.get("region", ""), DATA_FORMAT)
     try:
         s = socket.create_connection((host, port), timeout=15)
     except OSError as e:
@@ -766,12 +841,14 @@ def upload(rep, host, port, game, entries, total, jobs, mode, meta, phase="uploa
     rt.join(300)  # the console verifies and renames after the END frame
     s.close()
     head, _, body = bytes(resp).partition(b"\r\n\r\n")
+    DBG("upload %s mode=%s: sent %d of %d raw bytes in %.1fs, answer %r" % (game, mode, sent[0], total, time.time() - t0, bytes(resp)[:600]))
     try:
         code, j = int(head.split()[1]), json.loads(body or b"{}")
     except (ValueError, IndexError):
-        raise Fail("net", "no valid answer from the console (connection lost?)")
+        raise Fail("net", "no valid answer from the console (connection lost after %d of %d MB sent; the app may have crashed, see the console log)" % (
+            sent[0] >> 20, total >> 20))
     if code != 200:
-        raise Fail(j.get("error", "install"), "console refused the install: HTTP %d %s" % (code, body[:200]))
+        raise Fail(j.get("error", "install"), console_fail(code, j, body))
     return j
 
 
@@ -799,6 +876,8 @@ def main(argv=None):
     if a.selftest:
         return selftest()
     rep = Reporter(a.json_progress, WEIGHTS)
+    DBG.open(a.cache_dir)
+    DBG("pc_import %s | python %s | %s %s | tools %s | args %s" % (RELEASE, sys.version.split()[0], platform.platform(), platform.machine(), RELEASE, argv or sys.argv[1:]))
     try:
         if a.make_pack:
             make_pack(a.from_tree, a.make_pack, a.codepacks)
@@ -884,11 +963,22 @@ def main(argv=None):
                 shutil.rmtree(os.path.join(proj, d), ignore_errors=True)
         return 0
     except Fail as e:
-        rep.emit("failed", 0, str(e), force=True, reason=e.reason)
-        return 1
+        return failed(rep, a, e.reason, str(e), traceback.format_exc())
     except KeyboardInterrupt:
         rep.emit("failed", 0, "interrupted", force=True, reason="cancelled")
         return 1
+    except Exception as e:  # a bug or an unexpected OS error: never end with a bare traceback the GUI cannot show
+        return failed(rep, a, "internal", "unexpected error %s: %s" % (type(e).__name__, e), traceback.format_exc())
+
+
+def failed(rep, a, reason, msg, tb):
+    DBG("FAILED reason=%s\n%s" % (reason, tb))
+    if a.ps5 and not (a.dry_run or a.out):
+        fetch_console_log(a.ps5, a.port)
+    if DBG.path:
+        msg += "  [debug log: %s]" % DBG.path
+    rep.emit("failed", 0, msg, force=True, reason=reason)
+    return 1
 
 
 def selftest():

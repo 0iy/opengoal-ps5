@@ -16,6 +16,7 @@ DISCS = {  # same table as app/shim/importer.cpp
     "SCUS-97265": ("jak2", "NTSC-U"), "SCES-51608": ("jak2", "PAL"), "SCPS-15057": ("jak2", "NTSC-J"), "SCKA-20010": ("jak2", "NTSC-K"),
     "SCUS-97330": ("jak3", "NTSC-U"), "SCUS-97516": ("jak3", "NTSC-U"), "SCES-52460": ("jak3", "PAL"), "SCKA-20040": ("jak3", "NTSC-K")}
 TXT = {  # key: (en, de)
+    "upd": ("Update available: {} (you have {}). Run the install command again.", "Update verfuegbar: {} (installiert {}). Installationsbefehl erneut ausfuehren."),
     "title": ("OpenGOAL-PS5: import your games", "OpenGOAL-PS5: Spiele importieren"),
     "drop": ("Choose your Jak .iso files (or drop them on the program)", "Jak-.iso-Dateien waehlen (oder auf das Programm ziehen)"),
     "browse": ("Browse...", "Durchsuchen..."), "ps5": ("PS5 address", "PS5-Adresse"), "find": ("Find PS5", "PS5 suchen"),
@@ -48,6 +49,23 @@ TXT = {  # key: (en, de)
 
 def T(k):
     return TXT[k][1 if DE else 0]
+
+
+def vkey(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v or ""))
+
+
+def check_update(show):
+    """Tell the user when a newer release exists (tiny VERSION asset vs the VERSION shipped with this window). Silent on any problem."""
+    try:
+        here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "VERSION")
+        have = open(here).readline().strip()
+        with urlopen(os.environ.get("OGPS5_BASE", "https://github.com/0iy/opengoal-ps5/releases/latest/download") + "/VERSION", timeout=4) as r:
+            new = r.read(64).decode("ascii", "replace").strip()
+        if re.fullmatch(r"\d+(\.\d+){1,3}", new) and vkey(have) and vkey(new) > vkey(have):
+            show(T("upd").format(new, have))
+    except Exception:
+        pass
 
 
 def load_cfg():
@@ -256,7 +274,10 @@ def gui_tk(tk, ttk, filedialog, argv):
     def btn(parent, text, cmd, primary=False):
         return tk.Button(parent, text=text, command=cmd, bg=OR if primary else TRACK, fg="#141414" if primary else FG, relief="flat", bd=0,
                          padx=14, pady=6, activebackground=OR, highlightthickness=0)
-    lab(root, T("title"), OR, 16, True).pack(fill="x", padx=20, pady=(14, 8))
+    lab(root, T("title"), OR, 16, True).pack(fill="x", padx=20, pady=(14, 0))
+    upd = lab(root, "", GRN, 10)
+    upd.pack(fill="x", padx=20, pady=(0, 6))
+    threading.Thread(target=lambda: check_update(lambda m: root.after(0, lambda: upd.config(text=m))), daemon=True).start()
     drop = tk.Frame(root, bg=PANEL, highlightbackground=OR, highlightthickness=2)
     drop.pack(fill="x", padx=20)
     lab(drop, T("drop"), FG, 10, True, PANEL).pack(pady=(14, 6))

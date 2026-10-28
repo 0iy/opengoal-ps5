@@ -175,6 +175,28 @@ class Parsing(unittest.TestCase):
             for _ in range(3):
                 self.assertEqual(S.make_plan(state, opts, done), want)
 
+    def test_update_decision(self):
+        def st(app, **kw):
+            base = {"app": app, "loader": True, "agent": {}, "procs": ["x"], "smp": True, "kstuff": "inferred", "onion": False, "open": {"ftp": False}}
+            base.update(kw)
+            return base
+        def o(target, update=False):
+            return argparse.Namespace(no_agent=False, update=update, with_kstuff=None, target=target)
+        old, same, new = {"install_api": 1}, {"install_api": 1, "app": "0.1.1"}, {"install_api": 1, "app": "0.1.10"}
+        self.assertEqual(S.vkey("0.1.10") > S.vkey("0.1.9"), True)  # numeric, not text, order
+        # no version on the console (build before 0.1.1) or an older one: update; same or newer: leave it; unknown target: leave it
+        self.assertEqual(S.make_plan(st(old), o("0.1.1"), set()), ["upload", "launch"])
+        self.assertEqual(S.make_plan(st({"install_api": 1, "app": "0.1.0"}), o("0.1.1"), set()), ["upload", "launch"])
+        self.assertEqual(S.make_plan(st(same), o("0.1.1"), set()), [])
+        self.assertEqual(S.make_plan(st(new), o("0.1.9"), set()), [])
+        self.assertEqual(S.make_plan(st(old), o(None), set()), [])
+        # busy console (import running): never restart it
+        self.assertEqual(S.update_state(st({"install_api": 1, "busy": True}), o("0.1.1")), "busy")
+        self.assertEqual(S.make_plan(st({"install_api": 1, "busy": True}), o("0.1.1"), set()), [])
+        # after the upload ran, a stubborn old version must not loop
+        self.assertEqual(S.make_plan(st(old), o("0.1.1"), {"upload", "launch"}), [])
+        self.assertEqual(S.DATA_FORMAT, __import__("pc_import").DATA_FORMAT)
+
     def test_ddp_probe(self):
         got = []
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -296,6 +318,57 @@ class EndToEnd(Base):
         self.assertEqual(c.received, [])
         self.assertEqual((c.agent_req, c.puts), (0, []))
         self.assertIn("Nothing to do", out)
+
+    # ---- updates: the console's VERSION file (served as "app" by /api/info) against the release the script ships
+    def update_console(self, console_version, release="0.1.1", latest=None):
+        c = self.c
+        c.kstuff = c.smp = True
+        c.open_loader()
+        c.start_app()
+        if console_version:
+            c.files[fake_ps5.APP + "/VERSION"] = (console_version + "\n").encode()
+        vf = os.path.join(self.tmp, "VERSION")
+        open(vf, "w").write(release + "\n")
+        app_v = os.path.join(self.app, "VERSION")
+        open(app_v, "w").write(release + "\n")
+        self.local["VERSION"] = (release + "\n").encode()
+        open(os.path.join(self.srv_dir, "VERSION"), "w").write((latest or release) + "\n")
+        os.environ["OGPS5_BASE"] = "http://127.0.0.1:%d" % self.http.server_address[1]
+        self.addCleanup(os.environ.pop, "OGPS5_BASE", None)
+        return self.run_setup(["--with-kstuff", "--version-file", vf])
+
+    def test_older_console_is_updated_by_the_normal_run(self):
+        rc, out = self.update_console("0.1.0")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Updating OpenGOAL-PS5 0.1.0 -> 0.1.1", out)
+        self.assertEqual(self.c.files[fake_ps5.APP + "/VERSION"].strip(), b"0.1.1")
+        self.assertEqual(self.c.files[fake_ps5.APP + "/eboot.bin"], self.local["eboot.bin"])
+        self.assertTrue(self.c.app_running, "the app must be running again after the update")
+        self.assertNotIn("is up to date", out)
+
+    def test_console_without_a_version_is_updated(self):  # every build before 0.1.1
+        rc, out = self.update_console(None)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Updating OpenGOAL-PS5 an older version -> 0.1.1", out)
+        self.assertEqual(self.c.files[fake_ps5.APP + "/VERSION"].strip(), b"0.1.1")
+
+    def test_current_console_is_left_alone(self):
+        rc, out = self.update_console("0.1.1")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual((self.c.received, self.c.agent_req, self.c.puts), ([], 0, []))
+        self.assertIn("OpenGOAL-PS5 0.1.1 is up to date", out)
+
+    def test_newer_console_is_never_downgraded(self):
+        rc, out = self.update_console("0.1.10", release="0.1.9")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual((self.c.received, self.c.agent_req, self.c.puts), ([], 0, []))
+        self.assertIn("newer than this installer", out)
+
+    def test_newer_release_online_is_announced(self):
+        rc, out = self.update_console("0.1.1", latest="0.2.0")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("A newer OpenGOAL-PS5 is available: 0.2.0 (this installer is 0.1.1)", out)
+        self.assertEqual(self.c.puts, [])  # announced only: the one-line install fetches and installs the new release
 
     def test_agent_already_running_but_app_missing(self):
         c = self.c

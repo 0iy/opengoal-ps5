@@ -47,6 +47,10 @@ irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 |
 curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
 ```
 
+**Updating is the same line.** Run it again: it downloads the latest release, compares it with the version on the console and updates only if the console is older
+(and tells you "up to date" otherwise). Your games and saves stay. The import window shows "Update available" when a newer release exists. If a release ever changes the
+game format, the setup lists the games to import again; they keep working until you do.
+
 Safe to run again: it only does what is still needed. It never restarts the console or writes kernel flags, and it never bundles kstuff-lite (fetched from its author's release, only after asking you).
 Prefer to read first? Download `OpenGOAL-PS5.zip` from the [latest release](https://github.com/0iy/opengoal-ps5/releases/latest), unzip it and run `python ps5_setup.py` (add `--debug` for a log you can attach to a report).
 Details and the manual route: [`docs/INSTALL.md`](docs/INSTALL.md).

@@ -31,3 +31,5 @@ Using the launcher
 
 Game data is stored in /data/opengoal/<game>/data. Saves and settings are in /data/opengoal/config.
 Logs: /data/opengoal/log/ps5.log (also sent as UDP broadcast on port 9999 for debugging).
+Import problems: every PC import writes a full debug log to <your home folder>\.opengoal-ps5\last_import.log (it includes the console's
+log tail after a failure). Attach that one file to a bug report. The console log is also readable in a browser: http://PS5-IP:8080/api/log

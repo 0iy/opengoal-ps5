@@ -9,6 +9,7 @@ out=$root/release/OpenGOAL-PS5
 rm -rf "$out"; mkdir -p "$out/app" "$out/tools" "$out/payloads"
 cp -r ~/ogapp/dist/LAPY77001 "$out/app/LAPY77001"
 rm -f "$out/app/LAPY77001/sce_sys/snd0.at9"  # hover music is derived from a copyrighted track: never ship it
+cp "$root/VERSION" "$out/VERSION"; cp "$root/VERSION" "$out/app/LAPY77001/VERSION"  # the app reports it in /api/info; the setup compares it to decide on an update
 cp "$root/payloads/scan.elf" "$out/tools/"
 cp -r "$here"/release_template/* "$out/"
 chmod +x "$out/install.sh"
@@ -27,5 +28,5 @@ python3 -c "import shutil,sys; shutil.make_archive(sys.argv[1], 'zip', sys.argv[
 python3 "$here/gui/make_gui_zip.py" "$root/release"
 ls -la "$root/release/OpenGOAL-PS5.zip"
 
-cp "$out/opengoal-ps5-pack.tgz" "$root/release/"
-(cd "$root/release" && sha256sum OpenGOAL-PS5.zip OpenGOAL-PS5-gui.zip opengoal-ps5-pack.tgz bootstrap.ps1 bootstrap.sh > SHA256SUMS 2>/dev/null; ls -la)
+cp "$out/opengoal-ps5-pack.tgz" "$root/release/"; cp "$root/VERSION" "$root/release/VERSION"  # tiny asset: the update check reads it
+(cd "$root/release" && sha256sum OpenGOAL-PS5.zip OpenGOAL-PS5-gui.zip opengoal-ps5-pack.tgz bootstrap.ps1 bootstrap.sh VERSION > SHA256SUMS 2>/dev/null; ls -la)

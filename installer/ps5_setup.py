@@ -33,6 +33,45 @@ MARKER = b"OGAGENT_TOKEN:"
 TOKEN_LEN = 32
 LAST = ("param.json", "eboot.bin")  # sent last: an interrupted upload never leaves a launchable half-app
 RELEASE_BASE = "https://github.com/0iy/opengoal-ps5/releases/latest/download"
+DATA_FORMAT = 1  # layout of an installed game; keep equal to pc_import.DATA_FORMAT (tests check it)
+
+
+def vkey(v):
+    """'0.1.10' -> (0, 1, 10); compares versions without a dependency."""
+    return tuple(int(x) for x in re.findall(r"\d+", v or ""))
+
+
+def local_version(path=None):
+    """The release this script belongs to: the VERSION file next to it (in the bundle and in the GUI zip), else None."""
+    try:
+        with open(path or os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")) as f:
+            v = f.readline().strip()
+        return v if vkey(v) else None
+    except OSError:
+        return None
+
+
+def latest_version(base=None):
+    """The newest published release (tiny VERSION asset). None on any problem: an update check must never block or fail a setup."""
+    try:
+        with urllib.request.urlopen((base or os.environ.get("OGPS5_BASE", RELEASE_BASE)) + "/VERSION", timeout=4) as r:
+            v = r.read(64).decode("ascii", "replace").strip()
+        return v if re.fullmatch(r"\d+(\.\d+){1,3}", v) else None
+    except (OSError, hc.HTTPException, ValueError):
+        return None
+
+
+def update_state(st, o):
+    """Decides from the live /api/info answer and the release this script ships: 'update' | 'current' | 'newer' | 'busy' | None (unknown)."""
+    app, tgt = st["app"], getattr(o, "target", None)
+    if app is None or not tgt:
+        return None
+    have = app.get("app") or ""  # builds before 0.1.1 do not report a version
+    if app.get("busy"):
+        return "busy"
+    if not vkey(have) or vkey(have) < vkey(tgt):
+        return "update"
+    return "current" if vkey(have) == vkey(tgt) else "newer"
 
 PORTS = {"loader": 9021, "loader2": 9020, "ftp": 2121, "shsrv": 2323, "debug": 744, "dbg_klog": 3232, "web": 8080, "agent": 9099,
          "eta_ftp": 1337, "eta_klog": 9081, "eta_pkg": 9090, "eta_webui": 12800, "eta_rpc": 8000, "smp_api": 10101}
@@ -68,6 +107,12 @@ T = {
         "none": "No console found. Start the exploit and the ELF loader (port 9021) on the PS5, then run this again, or pass --ip ADDRESS.",
         "ambiguous": "Several consoles look possible and --yes cannot choose between them. Pass --ip ADDRESS.",
         "idle": "Nothing to do: OpenGOAL-PS5 already answers at http://{}",
+        "updating": "Updating OpenGOAL-PS5 {} -> {}. Your games and saves stay on the console.", "update_unknown": "an older version",
+        "uptodate": "OpenGOAL-PS5 {} is up to date. Nothing to do: it answers at http://{}",
+        "newer_here": "The console has OpenGOAL-PS5 {}, newer than this installer ({}). Nothing was changed. Use --update to force.",
+        "busy_update": "The console is busy with an import. Update again when it is finished. Nothing was changed.",
+        "update_avail": "A newer OpenGOAL-PS5 is available: {} (this installer is {}). Update: run the one-line install again (see the README).",
+        "reimport": "This update changes the game format. Import these games again (their old copy keeps working until you do): {}",
         "ask_kstuff": "The app is refused without kstuff-lite. Load kstuff-lite now (downloaded from the author's release, no license file)? [y/N] ",
         "no_kstuff": "kstuff does not look loaded and loading it was not allowed. Load kstuff-lite yourself or run again with --with-kstuff.",
         "w_loader": "Waiting for the ELF loader on port {}. On the PS5 start the exploit (or the loader); this continues by itself.",
@@ -94,6 +139,12 @@ T = {
         "none": "Keine Konsole gefunden. Starte auf der PS5 den Exploit und den ELF-Loader (Port 9021) und starte dies erneut, oder nutze --ip ADRESSE.",
         "ambiguous": "Mehrere Konsolen kommen infrage, --yes kann nicht waehlen. Nutze --ip ADRESSE.",
         "idle": "Nichts zu tun: OpenGOAL-PS5 antwortet schon unter http://{}",
+        "updating": "OpenGOAL-PS5 wird aktualisiert: {} -> {}. Deine Spiele und Spielstaende bleiben auf der Konsole.", "update_unknown": "eine aeltere Version",
+        "uptodate": "OpenGOAL-PS5 {} ist aktuell. Nichts zu tun: es antwortet unter http://{}",
+        "newer_here": "Auf der Konsole ist OpenGOAL-PS5 {}, neuer als dieses Installationsprogramm ({}). Nichts geaendert. Mit --update erzwingen.",
+        "busy_update": "Die Konsole ist mit einem Import beschaeftigt. Aktualisiere nach dem Ende erneut. Nichts geaendert.",
+        "update_avail": "Eine neuere OpenGOAL-PS5 ist verfuegbar: {} (dieses Installationsprogramm ist {}). Aktualisieren: die Einzeiler-Installation erneut ausfuehren (siehe README).",
+        "reimport": "Dieses Update aendert das Spielformat. Importiere diese Spiele erneut (die alte Kopie laeuft bis dahin weiter): {}",
         "ask_kstuff": "Ohne kstuff-lite wird die App abgelehnt. kstuff-lite jetzt laden (vom Release des Autors, ohne Lizenzdatei)? [j/N] ",
         "no_kstuff": "kstuff scheint nicht geladen und Laden war nicht erlaubt. Lade kstuff-lite selbst oder starte mit --with-kstuff erneut.",
         "w_loader": "Warte auf den ELF-Loader an Port {}. Starte auf der PS5 den Exploit (oder den Loader); es geht von selbst weiter.",
@@ -871,7 +922,7 @@ class CountingFile:
 # ----------------------------------------------------------------------------------------------- plan
 def make_plan(st, o, done):
     """Missing steps as a pure function of the live state, the options and the steps already run in this session."""
-    if st["app"] is not None and not o.update:
+    if st["app"] is not None and not o.update and (update_state(st, o) != "update" or "upload" in done):
         return []
     steps = []
     if o.no_agent:
@@ -1108,10 +1159,11 @@ class Setup:
                 continue
             todo.append((path, rel, size))
         fresh_install = not a.get("installed") or any(r == "eboot.bin" for _, r, _ in todo)
+        restart = fresh_install or update_state(st, self.args) == "update"  # a new version always restarts the app, also when only assets changed
         if not todo:
             self.ui.emit("progress", text="app files already match (%d files)" % len(files), force=True)
         else:
-            if (st["launched"] or st["app"] is not None) and fresh_install:
+            if (st["launched"] or st["app"] is not None) and restart:
                 ag.kill()
                 self.wait_for(lambda s: not s["launched"] and s["app"] is None, "app to close", 20, soft=True)
             self.upload_files(ag, todo, files, remote)
@@ -1305,6 +1357,10 @@ class Setup:
         step_fn = {"loader": self.step_loader, "agent": self.step_agent, "kstuff": self.step_kstuff, "smp": self.step_smp, "upload": self.step_upload,
                    "launch": self.step_launch, "ftpsrv": self.step_ftpsrv, "ftp_install": self.step_ftp_install}
         planned = False
+        a.target = local_version(getattr(a, "version_file", None))
+        late = latest_version() if a.target else None
+        if late and vkey(late) > vkey(a.target):
+            ui.say("update_avail", late, a.target, level="warn")
         while True:
             st = self.mon.fresh()
             if st["agent_locked"] and st["agent"] is None:
@@ -1320,8 +1376,19 @@ class Setup:
                 planned = True
                 ui.emit("phase", text="3/5 plan")
                 ui.emit("plan", steps=shown)
+                us = update_state(st, a)
+                if us == "update" and plan:
+                    ui.say("updating", (st["app"].get("app") or ui.tr("update_unknown")), a.target)
                 if not plan:
-                    ui.say("idle", "%s:%d" % (self.ip, self.ports["web"]))
+                    ws = "%s:%d" % (self.ip, self.ports["web"])
+                    if us == "current":
+                        ui.say("uptodate", a.target, ws)
+                    elif us == "newer":
+                        ui.say("newer_here", st["app"].get("app"), a.target, level="warn")
+                    elif us == "busy":
+                        ui.say("busy_update", level="warn")
+                    else:
+                        ui.say("idle", ws)
                     self.save_ip(self.ip)
                     ui.emit("done", url="http://%s:%d" % (self.ip, self.ports["web"]), changed=False)
                     return 0
@@ -1364,6 +1431,9 @@ class Setup:
             raise Fail(ui.tr("launch_fail", ""))
         self.save_ip(self.ip)
         url = "http://%s:%d" % (self.ip, self.ports["web"])
+        stale = sorted(g for g, f in (st["app"].get("formats") or {}).items() if isinstance(f, int) and f < DATA_FORMAT)
+        if stale:
+            ui.say("reimport", ", ".join(stale), level="warn")
         if st["agent"] is not None and self.agent:
             self.agent.shutdown()
             self.wait_for(lambda s: s["agent"] is None, "agent to stop", 10, soft=True)
@@ -1456,6 +1526,7 @@ def parse_args(argv):
     ap.add_argument("--ddp-port", type=int, default=DDP_PORT, help=argparse.SUPPRESS)
     ap.add_argument("--payload-table", help=argparse.SUPPRESS)
     ap.add_argument("--scan-elf", help=argparse.SUPPRESS)
+    ap.add_argument("--version-file", help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     if a.json:
         a.yes = True

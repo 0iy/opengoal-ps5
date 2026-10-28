@@ -192,7 +192,7 @@ async function upload(id){
  try{
   for(let att=0;att<2;att++){
    const r=await fetch(`/api/begin?game=${id}&total=${total}&chunk=${CH}&fp=${fp}`,{method:"POST"});
-   if(!r.ok){l.phase="failed";l.err=(await r.json().catch(()=>({}))).error||"net";return}
+   if(!r.ok){const j=await r.json().catch(()=>({}));l.phase="failed";l.err=j.error||"net";l.detail=j.why?" ("+j.why+" - errno "+j.errno+(j.where?", "+j.where:"")+")":"";return}
    const info=await r.json().catch(()=>({})),have=new Set(info.resume||[]),todo=[];
    for(let o=0;o<total;o+=CH)if(!have.has(o))todo.push(o);
    let fail=false;
@@ -218,7 +218,7 @@ async function cancel(id){
 
 function view(id){  // -> {ph, reason}
  const l=loc[id],s=st.games[id]||{phase:"idle"};
- if(l&&l.phase==="failed")return{ph:"failed",reason:l.err};
+ if(l&&l.phase==="failed")return{ph:"failed",reason:l.err,detail:l.detail};
  if(l&&["pending","uploading","verifying"].includes(l.phase)&&s.phase!=="uploading")return{ph:l.phase};
  if(l&&l.phase==="sent"&&s.phase==="idle")return{ph:"verifying"};
  return{ph:s.phase,reason:s.reason}}
@@ -257,7 +257,7 @@ function render(){
    acts=s.reason==="cancelling"?"":cbtn}
   else if(ph==="done"){msg=t("done");cls+=" ok";pct=100;card+=" ok";bcls+=" ok";meta=s.elapsed?mmss(s.elapsed):"";acts=`<button class="sub" onclick="cancel('${id}')">${t("dismiss")}</button>`}
   else if(ph==="failed"){
-   const r=v.reason||"extract";msg=t(["extract","decompile","compile"].includes(r)?"f_"+r:r);cls+=" err";card+=" err";bcls+=" err";pct=Math.max(0,s.percent||0);
+   const r=v.reason||"extract";msg=t(["extract","decompile","compile"].includes(r)?"f_"+r:r)+(v.detail||"");cls+=" err";card+=" err";bcls+=" err";pct=Math.max(0,s.percent||0);
    acts=`<button class="go" onclick="$('#file').click()">${t("retry")}</button><button class="sub" onclick="cancel('${id}')">${t("dismiss")}</button>`}
   if(pct<0&&(ph==="importing"||ph==="verifying"))bcls+=" ind";
   const idle=ph==="idle";

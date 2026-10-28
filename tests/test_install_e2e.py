@@ -131,6 +131,30 @@ code, j = raw_put(good, 4096, "game=jak9&mode=replace")
 assert code == 404, code
 print("unknown game ok")
 
+# 9b. version/format reporting, the console log tail and readable install errors
+info = json.loads(pc.http_json("127.0.0.1", PORT, "GET", "/api/info")[1])
+assert "app" in info and info["formats"] == {"jak1": 1}, info  # jak1 was installed by this run with format=DATA_FORMAT; app = VERSION file of the app (absent here)
+assert open(os.path.join(data, ".format")).read().strip() == str(pc.DATA_FORMAT)
+os.makedirs(os.path.join(ROOT, "log"), exist_ok=True)
+open(os.path.join(ROOT, "log", "ps5.log"), "w").write("".join("line %d" % i + chr(10) for i in range(50000)))
+code, body = pc.http_json("127.0.0.1", PORT, "GET", "/api/log?kb=1")
+assert code == 200 and body.endswith(b"line 49999" + bytes([10])) and 1000 <= len(body) <= 1024, (code, len(body))
+open(os.path.join(ROOT, "jak2"), "w").write("a file where the game folder should be")  # mkdir below it fails
+code, j = raw_put(good, pc.tar_total(ents), "game=jak2&mode=replace")
+assert code == 500 and j["error"] == "io" and j["errno"] in (17, 20) and j["where"].startswith("mkdir ") and j["why"], (code, j)
+try:
+    pc.upload(rep, "127.0.0.1", PORT, "jak2", ents, pc.tar_total(ents), 2, "replace", {})
+    raise AssertionError("upload into a blocked folder must fail")
+except pc.Fail as e:
+    assert e.reason == "io" and "could not write its files" in str(e) and "mkdir" in str(e), str(e)
+os.remove(os.path.join(ROOT, "jak2"))
+HB = os.environ["WS_HB"]  # replaces /data/homebrew: the app folder on the console
+assert json.loads(pc.http_json("127.0.0.1", PORT, "GET", "/api/info")[1])["app"] == ""  # no VERSION file: a build before 0.1.1
+os.makedirs(os.path.join(HB, "LAPY77001"))
+open(os.path.join(HB, "LAPY77001", "VERSION"), "w").write("0.1.1" + chr(10))
+assert json.loads(pc.http_json("127.0.0.1", PORT, "GET", "/api/info")[1])["app"] == "0.1.1"
+print("info, log tail, io errors ok")
+
 
 # 11. cancel while the stream is arriving (the receiver notices at the next received bytes)
 ents, _ = entries("E", 2 << 20)

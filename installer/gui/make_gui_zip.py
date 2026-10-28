@@ -6,7 +6,8 @@ import hashlib, os, shutil, sys, zipfile
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 out = os.path.abspath(sys.argv[1])
 os.makedirs(out, exist_ok=True)
-files = {n: os.path.join(root, n) for n in ("gui/windows/OpenGOAL-PS5.ps1", "gui/macos/OpenGOAL-PS5.command", "gui/OpenGOAL-PS5-gui.py", "ps5_setup.py")}
+files = {"VERSION": os.path.join(root, "..", "VERSION")}
+files.update({n: os.path.join(root, n) for n in ("gui/windows/OpenGOAL-PS5.ps1", "gui/macos/OpenGOAL-PS5.command", "gui/OpenGOAL-PS5-gui.py", "ps5_setup.py")})
 if os.path.exists(os.path.join(root, "pc_import.py")):
     files["pc_import.py"] = os.path.join(root, "pc_import.py")
 else:
@@ -29,7 +30,8 @@ with zipfile.ZipFile(zp, "w", zipfile.ZIP_DEFLATED) as z:
             z.writestr(zi, f.read())
 for b in ("bootstrap.ps1", "bootstrap.sh"):
     shutil.copy(os.path.join(root, b), os.path.join(out, b))
-names = [n for n in ("OpenGOAL-PS5-gui.zip", "bootstrap.ps1", "bootstrap.sh", "OpenGOAL-PS5.zip") if os.path.exists(os.path.join(out, n))]
+shutil.copy(os.path.join(root, "..", "VERSION"), os.path.join(out, "VERSION"))
+names = [n for n in ("OpenGOAL-PS5-gui.zip", "bootstrap.ps1", "bootstrap.sh", "OpenGOAL-PS5.zip", "VERSION") if os.path.exists(os.path.join(out, n))]
 with open(os.path.join(out, "SHA256SUMS"), "w", newline="\n") as f:
     for n in names:
         f.write("%s  %s\n" % (hashlib.sha256(open(os.path.join(out, n), "rb").read()).hexdigest(), n))

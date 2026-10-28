@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.1 (unreleased)
+
+### Added
+- Updating: run the one-line install again. The setup compares the console's version (`app` in `/api/info`, from the `VERSION` file uploaded with the app) with the release and updates by itself when it is older, says "up to date" when equal and refuses to downgrade. It never restarts the app while an import runs.
+- The import windows show "Update available" when a newer release exists; the setup prints the same notice
+- `data_format` check: games record the format they were imported with (`/api/info` `formats`); after an update the setup lists games that need a re-import
+- Debug log of every PC import (`~/.opengoal-ps5/last_import.log`, includes the console log after a failure) and `GET /api/log` on the console
+- Console install errors now name the failing step, path and errno (`{"error":"io","errno":13,"why":"...","where":"..."}`) with a hint for the usual causes
+
+### Fixed
+- "Failed: no extractor.exe" on a fresh install: the import windows pointed at an empty tools folder instead of downloading the official release
+
 ## 0.1.0 (first public version)
 
 Based on OpenGOAL (jak-project `553a713`, v0.3.x). Tested on firmware 13.60 only.

@@ -27,6 +27,7 @@ if ($env:OGPS5_LANG) { $lang = $env:OGPS5_LANG }
 $de = ($lang -eq 'de')
 $S = @{
     title   = @('OpenGOAL-PS5: import your games', 'OpenGOAL-PS5: Spiele importieren')
+    upd     = @('Update available: {0} (you have {1}). Run the install command again.', 'Update verfuegbar: {0} (installiert {1}). Installationsbefehl erneut ausfuehren.')
     drop    = @('Drop your Jak .iso files here', 'Jak-.iso-Dateien hier ablegen')
     browse  = @('Browse...', 'Durchsuchen...')
     ps5     = @('PS5 address', 'PS5-Adresse')
@@ -256,6 +257,7 @@ $form.BackColor = $Bg; $form.ForeColor = $Fg; $form.Font = $font; $form.AllowDro
 $form.FormBorderStyle = 'FixedSingle'; $form.MaximizeBox = $false
 
 $form.Controls.Add((New-Label (T 'title') 20 14 680 32 $Orange $fontH))
+$updLbl = New-Label '' 20 40 680 18 $Green $font; $updLbl.TextAlign = 'MiddleRight'; $form.Controls.Add($updLbl)  # filled by the update check at startup
 
 # drop zone
 $drop = New-Object Windows.Forms.Panel; $drop.Location = New-Object Drawing.Point(20, 56); $drop.Size = New-Object Drawing.Size(680, 90); $drop.AllowDrop = $true; $drop.BackColor = $Panel
@@ -443,6 +445,24 @@ $form.Add_FormClosing({ if ($script:proc -and -not $script:proc.P.HasExited) { t
 $cfg = Load-Cfg
 if ($Ps5) { $ipBox.Text = $Ps5 } elseif ($cfg -and $cfg.ps5) { $ipBox.Text = [string]$cfg.ps5 }
 $form.Add_Shown({
+    # update check: the newest release's tiny VERSION asset against the VERSION file shipped with this window; silent on any problem
+    try {
+        $script:haveVer = (Get-Content (Join-Path $PSScriptRoot '..\..\VERSION') -TotalCount 1).Trim()
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $script:updTask = (New-Object Net.WebClient).DownloadStringTaskAsync($(if ($env:OGPS5_BASE) { $env:OGPS5_BASE } else { 'https://github.com/0iy/opengoal-ps5/releases/latest/download' }) + '/VERSION')
+        $updTimer = New-Object Windows.Forms.Timer; $updTimer.Interval = 500
+        $updTimer.Add_Tick({
+            param($tm, $ev)  # not $s: PowerShell names are case-insensitive and $S is the text table used by T
+            if (-not $script:updTask.IsCompleted) { return }
+            $tm.Stop()
+            try {
+                $new = $script:updTask.Result.Trim()
+                if ($new -match '^\d+(\.\d+){1,3}$' -and ([version]$new) -gt ([version]$script:haveVer)) { $updLbl.Text = (T 'upd') -f $new, $script:haveVer }
+                if ($env:OGPS5_UPD_SHOT) { $form.Refresh(); $bmp = New-Object Drawing.Bitmap($form.Width, $form.Height); $form.DrawToBitmap($bmp, (New-Object Drawing.Rectangle(0, 0, $bmp.Width, $bmp.Height))); $bmp.Save($env:OGPS5_UPD_SHOT); $form.Close() }  # test hook
+            } catch { }
+        })
+        $updTimer.Start()
+    } catch { }
     Add-Paths $Iso
     if (-not $ipBox.Text -and -not $AutoStart) { $findBtn.PerformClick() }
     if ($AutoStart) { $startBtn.PerformClick() }

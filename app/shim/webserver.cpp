@@ -321,14 +321,18 @@ struct FsSink : ps5inst::Sink {
   std::string root, cur, tmp;
   bool per_file_rename;
   int fd = -1, err = 0;
+  const char* step = "";  // what failed (mkdir | open | write | close | rename) and on which path: reported to the PC and logged
+  std::string fail_path;
   std::set<std::string> dirs;
   FsSink(const std::string& r, bool prf) : root(r), per_file_rename(prf) {}
   ~FsSink() override { if (fd >= 0) close(fd); }
+  bool bad(const char* s, const std::string& p) { err = errno; step = s; fail_path = p; return false; }
   bool ensure(const std::string& full) {
     if (dirs.count(full)) return true;
     mkdir_p(full.c_str());
+    const int e = errno;
     dirs.insert(full);
-    if (!dir_exists(full)) { err = errno; return false; }
+    if (!dir_exists(full)) { errno = e; return bad("mkdir", full); }
     return true;
   }
   bool make_dir(const std::string& rel) override { return ensure(root + "/" + rel); }
@@ -338,13 +342,13 @@ struct FsSink : ps5inst::Sink {
     cur = root + "/" + rel;
     tmp = per_file_rename ? cur + ".part" : cur;
     fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) { err = errno; return false; }
+    if (fd < 0) return bad("open", tmp);
     return true;
   }
   bool write(const char* p, size_t n) override {
     while (n) {
       const ssize_t w = ::write(fd, p, n);
-      if (w <= 0) { err = errno; return false; }
+      if (w <= 0) return bad("write", tmp);
       p += w; n -= size_t(w);
     }
     return true;
@@ -352,8 +356,8 @@ struct FsSink : ps5inst::Sink {
   bool close_file() override {
     const int r = close(fd);
     fd = -1;
-    if (r != 0) { err = errno; return false; }
-    if (per_file_rename && rename(tmp.c_str(), cur.c_str()) != 0) { err = errno; return false; }
+    if (r != 0) return bad("close", tmp);
+    if (per_file_rename && rename(tmp.c_str(), cur.c_str()) != 0) return bad("rename", tmp);
     return true;
   }
 };
@@ -362,6 +366,32 @@ std::string clean_token(const std::string& s) {
   std::string o;
   for (char c : s) if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-') o += c;
   return o.substr(0, 15);
+}
+
+// First line of a small text file with every character outside [0-9A-Za-z._-] dropped (it ends up inside JSON); "" when unreadable.
+std::string read_token(const std::string& path) {
+  std::string o;
+  if (FILE* f = std::fopen(path.c_str(), "r")) {
+    char b[64];
+    if (std::fgets(b, sizeof b, f))
+      for (const char* c = b; *c && o.size() < 24; ++c)
+        if ((*c >= '0' && *c <= '9') || (*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z') || *c == '.' || *c == '-' || *c == '_') o += *c;
+    std::fclose(f);
+  }
+  return o;
+}
+
+// Capabilities, the app version (the VERSION file of the release, uploaded with the app) and the data format of every installed game
+// (.format next to the game's data; a game installed before the file existed is format 1). The PC setup decides on updates from these.
+std::string info_json() {
+  std::string fm;
+  for (int i = 0; i < 3; ++i) {
+    if (!installed(kIds[i])) continue;
+    const std::string f = read_token(std::string("/data/opengoal/") + kIds[i] + "/data/.format");
+    fm += std::string(fm.empty() ? "" : ",") + "\"" + kIds[i] + "\":" + (f.empty() ? "1" : f);
+  }
+  return "{\"install_api\":1,\"max_frame\":16777216,\"codecs\":[\"raw\",\"deflate\"],\"busy\":" + std::string(g_installing.load() ? "true" : "false") +
+         ",\"app\":\"" + read_token("/data/homebrew/LAPY77001/VERSION") + "\",\"formats\":{" + fm + "}}";
 }
 
 // Answers, then swallows what the client is still sending (up to 64 MB / 1 s of silence) so the close does not turn into a TCP
@@ -417,14 +447,20 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
   timeval tv{30, 0};
   setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
   std::string key;
+  int eno = 0;
+  std::string where;  // "<step> <path>" of the failing filesystem call
   uint64_t files = 0;
   {
     mkdir_p(base.c_str());
     if (!add) rm_rf(stage_dir);
     mkdir_p(stage_dir.c_str());
+    if (!dir_exists(stage_dir)) {  // /data/opengoal/<game> cannot be created or written: say so now, not after the upload
+      key = "io"; eno = errno; where = "mkdir " + stage_dir;
+      ps5_log("install: %s cannot create %s: errno %d (%s)", game.c_str(), stage_dir.c_str(), eno, strerror(eno));
+    }
     FsSink sink(stage_dir, add);
     std::unique_ptr<ps5inst::Receiver> rx(new ps5inst::Receiver(&sink, total));  // ~130 KB of tables: heap, the thread stack is small
-    bool ok = pending.empty() || rx->feed(pending.data(), pending.size());
+    bool ok = key.empty() && (pending.empty() || rx->feed(pending.data(), pending.size()));
     pending.clear();
     while (ok && !rx->finished()) {
       if (g.cancelling.load()) { key = "cancelled"; break; }
@@ -437,7 +473,10 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
     if (key.empty() && !ok) {
       const std::string e = rx->error();
       key = e == "io" ? ((sink.err == ENOSPC || sink.err == EDQUOT) ? "no_space" : "io") : "bad_contents";
-      ps5_log("install: %s failed: %s (errno %d)", game.c_str(), e.c_str(), sink.err);
+      eno = sink.err;
+      if (e == "io") where = std::string(sink.step) + " " + sink.fail_path;
+      ps5_log("install: %s failed: %s (errno %d %s) at %s, %llu of %llu bytes received", game.c_str(), e.c_str(), sink.err, strerror(sink.err),
+              where.c_str(), (unsigned long long)rx->raw_done(), (unsigned long long)total);
     }
     if (key.empty() && !(rx->finished() && rx->raw_done() == total)) key = "bad_contents";
     files = rx->files();
@@ -446,6 +485,11 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
     if (add) {
       // files are already in place
     } else {
+      if (FILE* f = std::fopen((stage_dir + "/.format").c_str(), "w")) {  // data format of this install, see info_json()
+        const unsigned long long fmt = strtoull(query_value(query, "format").c_str(), nullptr, 10);  // a client that sends none is format 1
+        std::fprintf(f, "%llu\n", fmt < 1 ? 1ull : std::min(999ull, fmt));
+        std::fclose(f);
+      }
       if (FILE* f = std::fopen((stage_dir + "/.ps5ready").c_str(), "w")) {
         std::fprintf(f, "{\"game\":\"%s\",\"serial\":\"%s\",\"region\":\"%s\",\"time\":%ld,\"source\":\"pc_import\"}\n", game.c_str(), serial.c_str(), region.c_str(), (long)time(nullptr));
         std::fclose(f);
@@ -453,8 +497,9 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
       const std::string old = base + "/data.old";
       if (dir_exists(old)) rm_rf(old);  // leftover of an interrupted earlier swap
       const bool had = dir_exists(data);
-      if (had && rename(data.c_str(), old.c_str()) != 0) key = "io";
-      else if (rename(stage_dir.c_str(), data.c_str()) != 0) { key = "io"; if (had) rename(old.c_str(), data.c_str()); }
+      if (had && rename(data.c_str(), old.c_str()) != 0) { key = "io"; eno = errno; where = "rename " + data + " -> " + old; }
+      else if (rename(stage_dir.c_str(), data.c_str()) != 0) { key = "io"; eno = errno; where = "rename " + stage_dir + " -> " + data; if (had) rename(old.c_str(), data.c_str()); }
+      if (!key.empty()) ps5_log("install: %s swap failed: errno %d (%s) at %s", game.c_str(), eno, strerror(eno), where.c_str());
       else if (had) {
         pthread_t th;
         if (pthread_create(&th, nullptr, rm_thread, new std::string(old)) == 0) pthread_detach(th);
@@ -473,12 +518,13 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
   g_installing = false;
   ps5_log("install: %s %s (%llu files, %llu bytes, %ld s)", game.c_str(), key.empty() ? "ok" : key.c_str(), (unsigned long long)files, total,
           (long)time(nullptr) - g.t0.load());
-  char b[160];
+  char b[640];
   if (key.empty()) {
     std::snprintf(b, sizeof b, "{\"ok\":true,\"files\":%llu,\"bytes\":%llu,\"mode\":\"%s\"}", (unsigned long long)files, total, add ? "add" : "replace");
     reply(fd, 200, J, b, false);
   } else {
-    std::snprintf(b, sizeof b, "{\"error\":\"%s\"}", key.c_str());
+    for (char& c : where) if (c == '"' || c == '\\' || (unsigned char)c < 32) c = '\'';
+    std::snprintf(b, sizeof b, "{\"error\":\"%s\",\"errno\":%d,\"why\":\"%s\",\"where\":\"%.300s\"}", key.c_str(), eno, eno ? strerror(eno) : "", where.c_str());
     reply(fd, key == "bad_contents" || key == "cancelled" ? 422 : 500, J, b, false);
   }
 }
@@ -541,7 +587,22 @@ void* serve(void* arg) {
         serve_events(fd);
         goto done;
       } else if (method == "GET" && path == "/api/info") {
-        respond(fd, 200, "application/json", "{\"install_api\":1,\"max_frame\":16777216,\"codecs\":[\"raw\",\"deflate\"],\"busy\":" + std::string(g_installing.load() ? "true" : "false") + "}", keep);
+        respond(fd, 200, "application/json", info_json(), keep);
+      } else if (method == "GET" && path == "/api/log") {  // tail of ps5.log (the file is huge): ?kb=N, default 128, max 1024
+        unsigned long long kb = strtoull(query_value(query, "kb").c_str(), nullptr, 10);
+        kb = kb < 1 ? 128 : kb > 1024 ? 1024 : kb;
+        std::string txt;
+        if (FILE* f = std::fopen("/data/opengoal/log/ps5.log", "rb")) {
+          std::fseek(f, 0, SEEK_END);
+          const long end = std::ftell(f), from = end > long(kb << 10) ? end - long(kb << 10) : 0;
+          std::fseek(f, from, SEEK_SET);
+          txt.resize(size_t(end - from));
+          txt.resize(std::fread(&txt[0], 1, txt.size(), f));
+          std::fclose(f);
+        } else {
+          txt = "cannot open /data/opengoal/log/ps5.log: " + std::string(strerror(errno)) + "\n";
+        }
+        respond(fd, 200, "text/plain; charset=utf-8", txt, keep);
       } else if (method == "PUT" && path == "/api/install" && gi >= 0) {
         handle_install(fd, gi, query, pending, buf);
         goto done;
@@ -583,7 +644,15 @@ void* serve(void* arg) {
             if (low) { respond(fd, 409, "application/json", "{\"error\":\"no_space\"}", keep); goto next; }
             remove_upload_files(game);
             int out = open(path_of(game, ".part").c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (out < 0) { respond(fd, 409, "application/json", "{\"error\":\"io\"}", keep); goto next; }
+            if (out < 0) {
+              const int e = errno;
+              const std::string pp = path_of(game, ".part");
+              ps5_log("upload: %s cannot create %s: errno %d (%s)", game.c_str(), pp.c_str(), e, strerror(e));
+              char eb[400];
+              std::snprintf(eb, sizeof eb, "{\"error\":\"io\",\"errno\":%d,\"why\":\"%s\",\"where\":\"open %.200s\"}", e, strerror(e), pp.c_str());
+              respond(fd, 409, "application/json", eb, keep);
+              goto next;
+            }
             if (ftruncate(out, off_t(total)) != 0) {}  // sparse preallocation: chunks arrive out of order
             close(out);
             write_meta(game, total, chunk, fp.empty() ? "-" : fp);
