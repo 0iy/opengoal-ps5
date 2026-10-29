@@ -251,7 +251,7 @@ class FakeConsole:
                 m, p = self.command, u.path
                 if m == "GET" and p == "/v1/status":
                     eb = console.files.get(APP + "/eboot.bin")  # same layout as h_status in payloads/ogagent.c
-                    return self.reply(200, {"ok": True, "agent": {"version": "1", "uptime_s": int(time.time() - console.t0), "lifetime_left_s": 3000, "launched": False},
+                    return self.reply(200, {"ok": True, "agent": {"version": "2", "uptime_s": int(time.time() - console.t0), "lifetime_left_s": 3000, "launched": False},
                                             "system": {"kernel": "FreeBSD", "firmware": console.firmware, "uptime_s": 99}, "processes": console.procs(),
                                             "tcp_ports_open": [], "mounts": [{"path": "/data", "type": "ufs", "free_bytes": 1 << 40, "total_bytes": 1 << 41}],
                                             "paths": {"app_dir_exists": True, "data_dir_exists": True, "eboot_size": len(eb) if eb is not None else -1},
@@ -272,7 +272,7 @@ class FakeConsole:
                     d = console.files.get(q["path"])
                     return self.reply(200, d, "application/octet-stream") if d is not None else self.reply(404, {"error": "none"})
                 if m == "POST" and p == "/v1/mkdir":
-                    return self.reply(200, {"ok": True}) if q["path"] == APP or self.allowed(q["path"]) else self.reply(403, {"error": "path"})
+                    return self.reply(200, {"ok": True, "mode": 0o777 if q["path"].startswith("/data/opengoal") else 0o755}) if q["path"] == APP or self.allowed(q["path"]) else self.reply(403, {"error": "path"})
                 if m == "POST" and p == "/v1/rm":
                     console.files.pop(q["path"], None)
                     return self.reply(200, {"ok": True})

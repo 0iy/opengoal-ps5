@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 (2026-10-29)
+
+### Fixed
+- 0.1.3 did not repair `/data/opengoal` on a console that already had it: a second setup run never touched that folder, and an older agent still running was reused. The setup now creates and repairs the app's data folders on every run, replaces an older agent, and checks the resulting modes; it stops with the list of folders when one is still not writable (#5)
+
 ## 0.1.3 (2026-10-28)
 
 ### Fixed

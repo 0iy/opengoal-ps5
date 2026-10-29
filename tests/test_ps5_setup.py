@@ -175,6 +175,14 @@ class Parsing(unittest.TestCase):
             for _ in range(3):
                 self.assertEqual(S.make_plan(state, opts, done), want)
 
+    def test_old_agent_replaced(self):
+        # an agent older than AGENT_MIN_VERSION cannot fix the folder modes (#5): send the new one once
+        old = {"app": None, "loader": True, "agent": {}, "av": {"version": "1"}, "procs": ["x"], "smp": True, "kstuff": "inferred", "onion": False, "open": {"ftp": False}}
+        o = argparse.Namespace(no_agent=False, update=False, with_kstuff=None)
+        self.assertEqual(S.make_plan(old, o, set()), ["agent", "upload", "launch"])
+        self.assertEqual(S.make_plan(old, o, {"agent"}), ["upload", "launch"])
+        self.assertEqual(S.make_plan(dict(old, av={"version": "2"}), o, set()), ["upload", "launch"])
+
     def test_update_decision(self):
         def st(app, **kw):
             base = {"app": app, "loader": True, "agent": {}, "procs": ["x"], "smp": True, "kstuff": "inferred", "onion": False, "open": {"ftp": False}}

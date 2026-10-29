@@ -38,7 +38,7 @@
 #include <sys/user.h>
 #endif
 
-#define OG_VERSION "1"
+#define OG_VERSION "2"  // 2: makes /data/opengoal folders 0777 (setup replaces an older agent)
 #ifndef OG_PORT
 #define OG_PORT 9099
 #endif
@@ -740,7 +740,9 @@ static int h_mkdir(Conn* c) {
   if (!path_ok(path, g_root_list, 1)) return respond_err(c, 403, "path not allowed");
   if (mkdir_p(path, 0755)) return respond_err(c, 500, strerror(errno));
   SB b = {0};
-  sb_s(&b, "{\"ok\":true,\"path\":"); sb_str(&b, path); sb_s(&b, "}");
+  struct stat st;  // the mode as it really is, so the setup can check the folder is writable for the app
+  sb_s(&b, "{\"ok\":true,\"path\":"); sb_str(&b, path);
+  sb_f(&b, ",\"mode\":%d}", stat(path, &st) == 0 ? (int)(st.st_mode & 07777) : -1);
   int r = respond_json(c, 200, &b);
   free(b.p);
   return r;

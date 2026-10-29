@@ -188,7 +188,7 @@ def run(tmp):
     st, j = a.js("GET", "/v1/status")
     check("status 200", st == 200 and j and j["ok"] is True, str(j)[:200])
     check("status fields", j and all(k in j for k in ("agent", "system", "processes", "tcp_ports_open", "mounts", "paths", "app", "caps")))
-    check("status version", j["agent"]["version"] == "1" and j["agent"]["lifetime_left_s"] > 0)
+    check("status version", j["agent"]["version"] == "2" and j["agent"]["lifetime_left_s"] > 0)
     check("status paths", j["paths"]["app_dir_exists"] and j["paths"]["data_dir_exists"] and j["paths"]["eboot_size"] == -1)
     check("status caps", j["caps"]["write_data"] is True and j["caps"]["launch"] is True)
     check("status processes", len(j["processes"]) > 0 and all("pid" in p and "name" in p and "title" in p for p in j["processes"]))

@@ -920,6 +920,16 @@ class CountingFile:
 
 
 # ----------------------------------------------------------------------------------------------- plan
+AGENT_MIN_VERSION = 2  # 2: makes the /data/opengoal folders writable for the app (#5)
+
+
+def agent_too_old(st):
+    if not st.get("av"):
+        return False
+    v = st["av"].get("version")
+    return st["agent"] is not None and not st.get("agent_locked") and not (str(v).isdigit() and int(v) >= AGENT_MIN_VERSION)
+
+
 def make_plan(st, o, done):
     """Missing steps as a pure function of the live state, the options and the steps already run in this session."""
     if st["app"] is not None and not o.update and (update_state(st, o) != "update" or "upload" in done):
@@ -930,7 +940,7 @@ def make_plan(st, o, done):
         for s in ("ftpsrv", "ftp_install"):
             if s not in done and not (s == "ftpsrv" and st["open"]["ftp"]): steps.append(s)
         return steps
-    if st["agent"] is None:
+    if st["agent"] is None or (agent_too_old(st) and "agent" not in done):
         if not st["loader"]: steps.append("loader")
         if "agent" not in done: steps.append("agent")
     visible = st["procs"] is not None
@@ -1087,6 +1097,9 @@ class Setup:
         fd = os.open(self.token_path(), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             f.write(self.token)  # kept so a killed run can resume with the agent still running
+        if self.agent and agent_too_old(self.mon.fresh()):
+            self.agent.shutdown()  # an older agent still holds the port
+            self.wait_for(lambda s: s["agent"] is None, "old agent to exit", 10, soft=True)
         if self.agent:
             self.agent.token = self.token
         self.send_elf(elf, "ogagent.elf")
@@ -1245,6 +1258,16 @@ class Setup:
             raise Fail(self.ui.tr("up_fail", "eboot.bin has %s bytes on the console, expected %d" % (es, eb)))
 
     def ensure_cfg(self, ag):
+        # every run: the agent (v2) creates these and makes them 0777, also folders an older setup made 0755;
+        # the app runs as another user and cannot create them itself under a 0755 /data/opengoal (#5)
+        bad = []
+        for d in ["log"] + ["config/OpenGOAL/" + g for g in ("jak1", "jak2", "jak3")] + ["jak1", "jak2", "jak3"]:
+            _, data = ag.ok("POST", "/v1/mkdir", {"path": "/data/opengoal/" + d})
+            mode = (json_or_none(data) or {}).get("mode")
+            if isinstance(mode, int) and mode >= 0 and mode & 0o777 != 0o777:  # double check: an agent that cannot chmod
+                bad.append("/data/opengoal/%s (%o)" % (d, mode))
+        if bad:
+            raise Fail("the app cannot write these folders: %s. Set them to 777 over FTP and run the setup again." % ", ".join(bad))
         if ag.get_file(REMOTE_CFG) is not None:
             return
         data = ("resolution=0\nrefresh=60\nlast_game=0\nlang=%d\n" % (1 if self.lang == "de" else 0)).encode()
