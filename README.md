@@ -32,7 +32,7 @@ launcher, fast game import from your PC and a patched OpenGL-to-AGC graphics dri
 **You need:** a PS5 on firmware 13.60 with a jailbreak that runs the ELF loader on port 9021, a PC on the same network (Windows, macOS or Linux) with Python 3, and your own games as `.iso` images.
 
 1. **Start the jailbreak on the PS5** until the ELF loader listens (port 9021). Do not load OnionHEN before the app runs.
-2. **Paste one line on the PC.** It finds the PS5, loads what is missing, installs and starts the app, then opens the import window. Choose or drop your `.iso` files, press **Start**, and launch a game from the PS5 home screen when the import finishes.
+2. **Paste one line on the PC.** It finds the PS5, loads what is missing, installs and starts the app, then opens the import window. Choose or drop your `.iso` files, press **Start**, and select a game in the OpenGOAL-PS5 launcher when the import finishes.
 
 **Windows** (PowerShell):
 
