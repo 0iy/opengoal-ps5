@@ -32,7 +32,7 @@ schnellem Spielimport vom PC und einem angepassten OpenGL-zu-AGC-Grafiktreiber. 
 **Du brauchst:** eine PS5 mit Firmware 13.60 und einem Jailbreak, der den ELF-Loader auf Port 9021 startet, einen PC im selben Netz (Windows, macOS oder Linux) mit Python 3 und deine Spiele als `.iso`-Abbilder.
 
 1. **Jailbreak auf der PS5 starten**, bis der ELF-Loader lauscht (Port 9021). OnionHEN nicht vor dem Start der App laden.
-2. **Eine Zeile am PC einfuegen.** Sie findet die PS5, laedt was fehlt, installiert und startet die App und oeffnet das Import-Fenster. Waehle oder ziehe deine `.iso`-Dateien hinein, druecke **Start** und waehle nach Abschluss des Imports ein Spiel im OpenGOAL-PS5-Launcher aus.
+2. **Eine Zeile am PC einfuegen.** Sie findet die PS5, laedt was fehlt, installiert und startet die App und oeffnet das Import-Fenster. Waehle oder ziehe deine `.iso`-Dateien hinein, druecke **Starten** und waehle nach Abschluss des Imports ein Spiel im OpenGOAL-PS5-Launcher aus.
 
 **Windows** (PowerShell):
 
@@ -45,6 +45,8 @@ irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 |
 ```bash
 curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
 ```
+
+Die Befehle oben laden ein Bootstrap-Skript aus dem neuesten Release und fuehren es aus. Wenn du es vorher pruefen moechtest, nutze die Zwei-Schritt-Methode in der [Installationsanleitung](docs/INSTALL.md#trust-model).
 
 Jederzeit wiederholbar: es erledigt nur, was noch fehlt. Es startet die Konsole nie neu, schreibt keine Kernel-Flags und enthaelt kstuff-lite nicht (kommt vom Release des Autors, nur nach Rueckfrage).
 Lieber erst lesen? `OpenGOAL-PS5.zip` vom [neuesten Release](https://github.com/0iy/opengoal-ps5/releases/latest) laden, entpacken und `python ps5_setup.py` starten (`--debug` schreibt ein Log fuer Fehlerberichte).
