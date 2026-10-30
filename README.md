@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/0iy/opengoal-ps5/actions/workflows/tests.yml"><img src="https://github.com/0iy/opengoal-ps5/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
-  <img src="https://img.shields.io/badge/release-v0.1.0-f97316" alt="release v0.1.0">
+  <a href="https://github.com/0iy/opengoal-ps5/releases/latest"><img src="https://img.shields.io/github/v/release/0iy/opengoal-ps5?color=f97316" alt="latest release"></a>
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0">
   <img src="https://img.shields.io/badge/PS5%20firmware-13.60-1f6feb" alt="firmware 13.60">
   <img src="https://img.shields.io/badge/status-experimental-d97706" alt="experimental">
@@ -32,8 +32,7 @@ launcher, fast game import from your PC and a patched OpenGL-to-AGC graphics dri
 **You need:** a PS5 on firmware 13.60 with a jailbreak that runs the ELF loader on port 9021, a PC on the same network (Windows, macOS or Linux) with Python 3, and your own games as `.iso` images.
 
 1. **Start the jailbreak on the PS5** until the ELF loader listens (port 9021). Do not load OnionHEN before the app runs.
-2. **Paste one line on the PC.** It finds the PS5, loads what is missing, installs and starts the app, then opens the import window. Drop your `.iso` files in it.
-   About a minute later the game is playable.
+2. **Paste one line on the PC.** It finds the PS5, loads what is missing, installs and starts the app, then opens the import window. Choose or drop your `.iso` files, press **Start**, and select a game in the OpenGOAL-PS5 launcher when the import finishes.
 
 **Windows** (PowerShell):
 
@@ -46,6 +45,8 @@ irm https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.ps1 |
 ```bash
 curl -fsSL https://github.com/0iy/opengoal-ps5/releases/latest/download/bootstrap.sh | bash
 ```
+
+These commands run a bootstrap script from the latest release. To inspect it before running, use the two-step method in the [install guide](docs/INSTALL.md#trust-model).
 
 **Updating is the same line.** Run it again: it downloads the latest release, compares it with the version on the console and updates only if the console is older
 (and tells you "up to date" otherwise). Your games and saves stay. The import window shows "Update available" when a newer release exists. If a release ever changes the
@@ -65,7 +66,7 @@ Details and the manual route: [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ## Status
 
-v0.1.0, early release. Measured at 1080p, vsync 60 Hz ([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)).
+Early release; see the badge above for the latest version. Measured at 1080p, vsync 60 Hz ([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)).
 
 | Game | State | Frame rate |
 |---|---|---|
