@@ -618,7 +618,11 @@ extern "C" float ps5_safe_area_ratio(void) {
   if (t >= next_ns) {
     next_ns = t + 2000000000ull;
     SceSystemServiceDisplaySafeAreaInfo info{};
-    if (sceSystemServiceGetDisplaySafeAreaInfo(&info) == 0 && info.ratio >= 0.5f && info.ratio <= 1.0f) {
+    const int rc = sceSystemServiceGetDisplaySafeAreaInfo(&info);
+    static bool first = true;
+    if (first) ps5_log("safe area query: rc=0x%x ratio=%.3f", rc, info.ratio);  // once: shows a failing call too
+    first = false;
+    if (rc == 0 && info.ratio >= 0.5f && info.ratio <= 1.0f) {
       if (info.ratio != ratio) ps5_log("safe area: %.3f", info.ratio);
       ratio = info.ratio;
     }
