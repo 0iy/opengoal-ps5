@@ -80,6 +80,7 @@ h = rep(h, "  GLuint screen_vao = 0;  // vertex array object for a screen-space 
     int pct = 100;           // percent chosen for this frame
     bool active = false;     // this frame renders below the window size (set in setup_frame)
     int win_x = 0, win_y = 0, win_w = 1, win_h = 1;  // draw region in window pixels
+    bool safe_area = false;  // final image shrunk to the system safe area this frame
     // render target pool (100 percent uses the engine's own render_buffer)
     struct Slot {
       Fbo fbo;
@@ -504,7 +505,9 @@ bool OpenGLRenderer::fsr_present(const Fbo* src, int bc, int ba) {
 '''.replace("@@VERT@@", vert).replace("@@FRAG@@", frag)
 
 c = rep(c, "void OpenGLRenderer::blit_display(ScopedProfilerNode& prof) {", helpers + "void OpenGLRenderer::blit_display(ScopedProfilerNode& prof) {")
-c = rep(c, '#include "game/kernel/common/kmachine.h"\n', '#include "game/kernel/common/kmachine.h"\n#include <algorithm>\n#include <chrono>\n#include <cmath>\n#include <cstdio>\n#include <cstdlib>\n#include <cstring>\n')
+c = rep(c, '#include "game/kernel/common/kmachine.h"\n', '#include "game/kernel/common/kmachine.h"\n#include <algorithm>\n#include <chrono>\n#include <cmath>\n#include <cstdio>\n#include <cstdlib>\n#include <cstring>\n'
+           '// __ps5__ safe area ratio (0.9 .. 1.0) of the PS5 display-area setting, from the shim (ps5sdl.cpp); weak elsewhere\n'
+           'extern "C" float ps5_safe_area_ratio(void) __attribute__((weak));\n')
 
 # ------------------------------------------------------------------ render(): frame hooks
 c = rep(c, "void OpenGLRenderer::render(DmaFollower dma, const RenderOptions& settings) {\n",
@@ -567,6 +570,17 @@ c = rep(c, """  m_render_state.render_fb_x = 0;
   m_fsr.win_y = m_render_state.draw_offset_y;
   m_fsr.win_w = m_render_state.draw_region_w;
   m_fsr.win_h = m_render_state.draw_region_h;
+  {  // __ps5__ safe area: the system display-area setting (Settings > Screen) shrinks the final image around the centre
+    const float sa = ps5_safe_area_ratio ? ps5_safe_area_ratio() : 1.0f;
+    m_fsr.safe_area = sa >= 0.5f && sa < 0.999f;
+    if (m_fsr.safe_area) {
+      const int w = std::max(1, (int)std::lround(m_fsr.win_w * sa)), h = std::max(1, (int)std::lround(m_fsr.win_h * sa));
+      m_fsr.win_x += (m_fsr.win_w - w) / 2;
+      m_fsr.win_y += (m_fsr.win_h - h) / 2;
+      m_fsr.win_w = w;
+      m_fsr.win_h = h;
+    }
+  }
   if (fsr_scaled) {
     const float sx = (float)rw / (float)settings.game_res_w, sy = (float)rh / (float)settings.game_res_h;
     m_render_state.draw_region_w = std::max(1, (int)std::lround(m_render_state.draw_region_w * sx));
@@ -587,7 +601,12 @@ c = rep(c, "    window_blit_src = &m_fbo_state.resources.render_buffer;\n  }\n",
         "    window_blit_src = m_fbo_state.render_fbo;  // ps5_fsr: render_buffer or a pooled smaller target\n  }\n")
 c = rep(c, """  glViewport(render_state->draw_offset_x, render_state->draw_offset_y, render_state->draw_region_w,
              render_state->draw_region_h);
-  glBindTexture(GL_TEXTURE_2D, *window_blit_src->tex_id);""", """  glViewport(m_fsr.win_x, m_fsr.win_y, m_fsr.win_w, m_fsr.win_h);  // ps5_fsr: window pixels
+  glBindTexture(GL_TEXTURE_2D, *window_blit_src->tex_id);""", """  if (m_fsr.safe_area) {  // __ps5__ safe area: black border around the shrunk image
+    glDisable(GL_SCISSOR_TEST);
+    glClearColor(0.f, 0.f, 0.f, 1.f);
+    glClear(GL_COLOR_BUFFER_BIT);
+  }
+  glViewport(m_fsr.win_x, m_fsr.win_y, m_fsr.win_w, m_fsr.win_h);  // ps5_fsr: window pixels
   glBindTexture(GL_TEXTURE_2D, *window_blit_src->tex_id);""")
 c = rep(c, "  glActiveTexture(GL_TEXTURE0);\n  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);\n\n  glBindBuffer(GL_ARRAY_BUFFER, 0);",
         "  glActiveTexture(GL_TEXTURE0);\n  if (!(m_fsr.active && fsr_present(window_blit_src, brightness_contrast_color, brightness_contrast_alpha)))\n    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);\n\n  glBindBuffer(GL_ARRAY_BUFFER, 0);")

@@ -107,7 +107,7 @@
      "id": "core.9",
      "file": "game/kernel/common/kscheme.cpp",
      "kind": "text",
-     "text": "#ifdef __linux__",
+     "text": "#elif defined __linux__",
      "count": "any",
      "note": "global replace by patch_linux_abi (any count; absent is fine only if the other form exists)"
     },
@@ -155,7 +155,7 @@
      "id": "core.15",
      "file": "game/mips2c/mips2c_private.h",
      "kind": "text",
-     "text": "#ifdef __linux__",
+     "text": "#elif defined __linux__",
      "count": "any",
      "note": "global replace by patch_linux_abi (any count; absent is fine only if the other form exists)"
     },
@@ -237,7 +237,7 @@
      "id": "core.26",
      "file": "game/runtime.cpp",
      "kind": "text",
-     "text": "    g_ee_main_mem =\n        (u8*)mmap((void*)EE_MAIN_MEM_MAP, EE_MAIN_MEM_SIZE, PROT_EXEC | PROT_READ | PROT_WRITE,\n                  MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);\n  }\n",
+     "text": "    g_ee_main_mem =\n        (u8*)mmap((void*)EE_MAIN_MEM_MAP, EE_MAIN_MEM_SIZE, PROT_EXEC | PROT_READ | PROT_WRITE,\n                  MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);\n",
      "count": 1
     },
     {
@@ -293,7 +293,7 @@
      "id": "core.34",
      "file": "decompiler/extractor/main.cpp",
      "kind": "text",
-     "text": "ExtractorErrorCode compile(const fs::path& iso_data_path, const std::string& data_subfolder) {\n",
+     "text": "ExtractorErrorCode compile(const fs::path& iso_data_path,",
      "count": 1
     },
     {
@@ -323,7 +323,7 @@
      "id": "core.38",
      "file": "decompiler/extractor/main.cpp",
      "kind": "function",
-     "text": "ExtractorErrorCode compile(const fs::path& iso_data_path, const std::string& data_subfolder) {",
+     "text": "ExtractorErrorCode compile(const fs::path& iso_data_path,",
      "count": 1,
      "name": "compile"
     },
@@ -515,6 +515,22 @@
     {
      "file": "game/graphics/opengl_renderer/loader/Loader.cpp",
      "text": "__ps5__ loader-unload"
+    }
+   ]
+  },
+  {
+   "id": "system-language",
+   "kind": "patch",
+   "path": "ports/patches/0070-system-language.patch",
+   "required": false,
+   "description": "Game language defaults follow the PS5 system language (sceScfGetLanguage returned English on PS5).",
+   "touches": [
+    "game/sce/libscf.cpp"
+   ],
+   "markers": [
+    {
+     "file": "game/sce/libscf.cpp",
+     "text": "__ps5__ system-language"
     }
    ]
   },

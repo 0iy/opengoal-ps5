@@ -71,6 +71,7 @@ patch(
     """    g_ee_main_mem =
         (u8*)mmap((void*)EE_MAIN_MEM_MAP, EE_MAIN_MEM_SIZE, PROT_EXEC | PROT_READ | PROT_WRITE,
                   MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
+#endif
   }
 """,
     """#ifdef __ps5__
@@ -87,6 +88,7 @@ patch(
     g_ee_main_mem =
         (u8*)mmap((void*)EE_MAIN_MEM_MAP, EE_MAIN_MEM_SIZE, PROT_EXEC | PROT_READ | PROT_WRITE,
                   MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
+#endif
 #endif
   }
 """,
@@ -116,6 +118,7 @@ LINUX_ABI_FILES = [
 ALL_REPLACEMENTS = [
     ("#ifdef __linux__", "#if defined(__linux__) || defined(__ps5__)"),
     ("#elif __linux__", "#elif defined(__linux__) || defined(__ps5__)"),
+    ("#elif defined __linux__", "#elif defined(__linux__) || defined(__ps5__)"),  # spelling since upstream v0.3.7 (arm64)
 ]
 
 
@@ -181,8 +184,8 @@ patch(
 )
 patch(
     "decompiler/extractor/main.cpp",
-    "ExtractorErrorCode compile(const fs::path& iso_data_path, const std::string& data_subfolder) {\n",
-    "ExtractorErrorCode compile(const fs::path& iso_data_path, const std::string& data_subfolder) {\n  ps5_import_stage_set(\"compile\");  // __ps5__\n",
+    "                           emitter::InstructionSet instr_str) {\n",
+    "                           emitter::InstructionSet instr_str) {\n  ps5_import_stage_set(\"compile\");  // __ps5__\n",
 )
 patch(
     "decompiler/extractor/main.cpp",

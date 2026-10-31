@@ -50,6 +50,20 @@ prints the manifest step with all anchors. The script refuses to write a `.gc` f
 Syntax check after every change (about 15 s per file, needs goalc built from the same tree): `goalc -g <game> --user-auto --proj-path <tree> -c '(make "out/<game>/obj/<file>.o")'`. With the patch,
 `progress-pc`, `pckernel-common`, `pckernel` (Jak 1), and `progress-static-pc`, `progress-generic-pc`, `progress-pc`, `pckernel` (Jak 2 and 3) compile.
 
+## Native menus (PC-only entries removed)
+
+Quit to desktop, keyboard and mouse options, cursor, controller selection, window focus, Discord, speedrunner mode,
+territory, MSAA and the fixed display entries (resolution, display, display mode, V-Sync, frame rate) are removed by text
+id, not greyed:
+- Jak 2/3: `ps5-prune-menu!` walks the menu trees once at load (`*ps5-hidden-text*` in `progress-static-pc.gc`).
+- Jak 1: `init-game-options` sets value pointers by fixed index on every open, so the arrays stay intact and
+  `ps5-prune-remap!` points each screen at a compacted copy.
+To hide another entry, add its text id to `GEN_HIDDEN` / `J1_HIDDEN` in the patch script.
+
+`pckernel-common.gc` forces Discord, speedrunner mode and the window-focus option off and the territory to auto at load.
+The game language defaults to the PS5 system language (patch `0070-system-language`, via `sceScfGetLanguage`); a saved
+choice in `pc-settings.gc` still wins.
+
 ## Not verified
 
 - Behaviour in a game: cursor skipping and wrap, the Jak 1 slider callbacks and the carousel labels have never run.

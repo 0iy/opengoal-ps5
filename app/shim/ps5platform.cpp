@@ -315,6 +315,10 @@ void ps5_log(const char* fmt, ...) {
 #include <ucontext.h>
 
 extern "C" void ps5_crash_handler(int sig, siginfo_t* si, void* uc_) {
+  // a fault inside the handler (the stack scan below can read past the top of the stack) must end the process,
+  // not recurse: a hung crashed app took the console's FTP/ELF loader payloads down with it
+  static volatile int in_handler = 0;
+  if (in_handler++) _exit(128 + sig);
   // The PS5 kernel's ucontext layout differs from the SDK header; offsets verified on hardware:
   // words[11]=rbp, [28]=rip, [31]=rsp (words[0..1] hold the signal mask).
   const uint64_t* words = static_cast<const uint64_t*>(uc_);

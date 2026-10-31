@@ -145,14 +145,21 @@ S=$HOME/.ps5stamp; mkdir -p $S
 # regenerate only when an input changed
 [ {H}/engine/apply_ps5_patches.py -nt $S/patches ] && {{ python3 {H}/engine/apply_ps5_patches.py >/dev/null || exit 1; touch $S/patches; }}
 if [ ! -f {H}/app/shim/launcher_assets.cpp ] || [ {H}/app/gen_launcher_assets.py -nt {H}/app/shim/launcher_assets.cpp ]; then python3 {H}/app/gen_launcher_assets.py {H}/app/shim/launcher_assets.cpp || exit 1; fi
+# a reconfigured CMake tree (upstream update) changes the source list: drop the cached gk command list too
+[ ~/jak_cfg/compile_commands.json -nt $S/gen ] && rm -f ~/gk_cmds.txt $S/gen $S/ext
 [ {H}/engine/gen_ps5_ninja.py -nt $S/gen ] && {{ python3 {H}/engine/gen_ps5_ninja.py >/dev/null || exit 1; touch $S/gen; }}
-cd ~/ps5build && ninja -k 0 -j 16 2>&1 | grep -E 'FAILED|error:' | head -20
+[ {H}/engine/gen_ps5_extractor.py -nt $S/ext ] && {{ python3 {H}/engine/gen_ps5_extractor.py >/dev/null || exit 1; touch $S/ext; }}
+J=$(nproc)
+cd ~/ps5build && ninja -k 0 -j $J 2>&1 | grep -E 'FAILED|error:' | head -20
 test -s libgk.a || {{ echo libgk.a missing; exit 1; }}
+cd ~/ps5build_ext && ninja -k 0 -j $J 2>&1 | grep -E 'FAILED|error:' | head -20
+[ ~/ps5build_ext/libextractor.a -nt ~/ogapp/build/eboot.elf ] && touch ~/ogapp/src/ogmain.cpp
+cd ~/ps5build
 cmp -s libgk.a ~/ogapp/vendor/libgk.a || cp libgk.a ~/ogapp/vendor/libgk.a
 [ ~/ogapp/vendor/libgk.a -nt ~/ogapp/build/eboot.elf ] && touch ~/ogapp/src/ogmain.cpp  # the app build does not track the archive
 for o in ~/drv/out/*.o; do [ "$o" -nt ~/ogapp/build/eboot.elf ] && touch ~/ogapp/src/ogmain.cpp; done  # nor the driver objects
 cmp -s {H}/app/glue/ogmain.cpp ~/ogapp/src/ogmain.cpp || cp {H}/app/glue/* ~/ogapp/src/
-cd ~/ogapp && make 2>&1 | tee ~/ogapp_make.log | grep -E 'undefined symbol|error:|Build complete' | sort | uniq -c | head -20
+cd ~/ogapp && make -j $J 2>&1 | tee ~/ogapp_make.log | grep -E 'undefined symbol|error:|Build complete' | sort | uniq -c | head -20
 """)
     out = (r.stdout + r.stderr).strip()
     ok = "Build complete" in out and "FAILED" not in out and "error:" not in out.replace("Build complete", "")

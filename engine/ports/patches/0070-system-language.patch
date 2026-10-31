@@ -1,0 +1,32 @@
+--- a/game/sce/libscf.cpp
++++ b/game/sce/libscf.cpp
+@@ -18,8 +18,28 @@
+   return SCE_ASPECT_43;
+ }
+ 
++#ifdef __ps5__
++// __ps5__ system-language: the console's system language (System Software setting) instead of a fixed English
++extern "C" int sceSystemServiceParamGetInt(int param_id, int* value);
++#endif
++
+ int sceScfGetLanguage() {
+-#ifdef _WIN32
++#ifdef __ps5__
++  int lang = 1;
++  if (sceSystemServiceParamGetInt(1 /*SCE_SYSTEM_SERVICE_PARAM_ID_LANG*/, &lang) != 0)
++    return SCE_ENGLISH_LANGUAGE;
++  switch (lang) {
++    case 0: return SCE_JAPANESE_LANGUAGE;
++    case 2: case 22: return SCE_FRENCH_LANGUAGE;      // French, French (Canada)
++    case 3: case 20: return SCE_SPANISH_LANGUAGE;     // Spanish, Spanish (Latin America)
++    case 4: return SCE_GERMAN_LANGUAGE;
++    case 5: return SCE_ITALIAN_LANGUAGE;
++    case 6: return SCE_DUTCH_LANGUAGE;
++    case 7: case 17: return SCE_PORTUGUESE_LANGUAGE;  // Portuguese, Portuguese (Brazil)
++    case 9: return SCE_KOREAN_LANGUAGE;
++    default: return SCE_ENGLISH_LANGUAGE;
++  }
++#elif defined(_WIN32)
+   // method 1: GetUserDefaultUILanguage
+   LANGID curLang = GetUserDefaultUILanguage();
+   auto curLangMain = curLang & 0x3ff;        // "base" language

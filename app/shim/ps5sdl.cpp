@@ -607,6 +607,25 @@ extern "C" unsigned ps5_driver_drain_counters(unsigned*, unsigned*);
 extern "C" void ps5_driver_flush_classes(unsigned long long[4][2], unsigned long long[4][2]);
 extern "C" unsigned ps5_driver_flush_callers(uintptr_t*, unsigned long long*, unsigned long long*);
 extern "C" void ps5_glfix_counters(unsigned long long*, unsigned long long*, unsigned long long*, unsigned long long*, unsigned long long*);
+// Safe area of the system display-area setting (Settings > Screen and Video), read every 2 s so a change applies
+// while the game runs. Called by the renderer's final pass (engine patch_fsr.py); 1.0 = full screen.
+struct SceSystemServiceDisplaySafeAreaInfo { float ratio; uint8_t reserved[128]; };
+extern "C" int sceSystemServiceGetDisplaySafeAreaInfo(SceSystemServiceDisplaySafeAreaInfo*);
+extern "C" float ps5_safe_area_ratio(void) {
+  static float ratio = 1.0f;
+  static uint64_t next_ns = 0;
+  const uint64_t t = now_ns();
+  if (t >= next_ns) {
+    next_ns = t + 2000000000ull;
+    SceSystemServiceDisplaySafeAreaInfo info{};
+    if (sceSystemServiceGetDisplaySafeAreaInfo(&info) == 0 && info.ratio >= 0.5f && info.ratio <= 1.0f) {
+      if (info.ratio != ratio) ps5_log("safe area: %.3f", info.ratio);
+      ratio = info.ratio;
+    }
+  }
+  return ratio;
+}
+
 bool SDL_GL_SwapWindow(SDL_Window*) {
   ps5_driver_gputrace_frame();
   ps5_profile_tick();

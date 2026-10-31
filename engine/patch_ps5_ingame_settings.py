@@ -108,6 +108,17 @@ edit("pk.load", PK, "     (commit-to-file obj)))\n  0)",
      "     (commit-to-file obj)))\n"
      "  ;; __ps5__ fixed output: a copied PC pc-settings.gc must not turn vsync off or raise the frame rate\n"
      "  (set-frame-rate! obj 60 #t)\n  (true! (-> obj vsync?))\n  0)")
+# console defaults after the fixed output lines; added after pk.load existed, so trees patched before get it via the
+# "upg." edit (an upg. edit whose anchor is missing is skipped: fresh trees get the full text from pk.load)
+PK_V1 = "  (set-frame-rate! obj 60 #t)\n  (true! (-> obj vsync?))\n  0)"
+PK_V2 = ("  (set-frame-rate! obj 60 #t)\n  (true! (-> obj vsync?))\n"
+         "  ;; __ps5__ console defaults: no Discord, speedrun timer, window-focus or region override from a copied PC file\n"
+         "  (set! (-> obj discord-rpc?) #f)\n  (set! (-> obj speedrunner-mode?) #f)\n"
+         "  (set! (-> obj ignore-controller-win-unfocused?) #f)\n  (set! (-> obj territory) -1)\n  0)")
+EDITS.insert(0, ("upg.pk.console", PK, "     (commit-to-file obj)))\n  ;; __ps5__ fixed output: a copied PC pc-settings.gc must not turn vsync off or raise the frame rate\n" + PK_V1,
+                 "     (commit-to-file obj)))\n  ;; __ps5__ fixed output: a copied PC pc-settings.gc must not turn vsync off or raise the frame rate\n" + PK_V2))
+EDITS[[e[0] for e in EDITS].index("pk.load")] = ("pk.load", PK, "     (commit-to-file obj)))\n  0)",
+    "     (commit-to-file obj)))\n  ;; __ps5__ fixed output: a copied PC pc-settings.gc must not turn vsync off or raise the frame rate\n" + PK_V2)
 edit("pk.fps", PK, '    (("fps") (set-frame-rate! obj (file-stream-read-int file) #t))',
      '    (("fps") (file-stream-read-int file) (set-frame-rate! obj 60 #t)) ;; __ps5__ ignore the saved value')
 edit("pk.vsync", PK, '    (("vsync") (set! (-> obj vsync?) (file-stream-read-symbol file)))',
@@ -241,6 +252,60 @@ edit("j1.snap", J1,
      "      (when (and (not (-> obj selected-option)) (ps5-opt-disabled? (-> options (-> obj option-index))))\n"
      "        (ps5-nav-skip! obj options 1))\n      (cond\n")
 
+# Jak 1: init-game-options sets value pointers by fixed index on every menu open, so the original arrays stay untouched;
+# each screen whose list holds a PC-only entry gets a compacted copy (made once, refreshed on every open)
+J1_HIDDEN = """quit-game input-opts-select-controller input-opts-ignore-controller-win-focus input-opts-enable-kb
+input-opts-enable-mouse input-opts-mouse-opts input-opts-auto-hide-cursor input-opts-binds-keyboard input-opts-binds-mouse
+discord-rpc speedrunner-mode msaa game-resolution display-mode display vsync frame-rate""".split()
+J1_PRUNE = """;; __ps5__ native menus: PC-only entries are hidden by giving each screen a compacted copy of its list
+(define *ps5-hidden-text* (new 'static 'boxed-array :type text-id
+  {ids}))
+(define *ps5-prune-src* (new 'global 'boxed-array array 68))
+(define *ps5-prune-dst* (new 'global 'boxed-array array 68))
+
+(defun ps5-hidden-option? ((opt game-option))
+  (if (not (and (nonzero? opt) opt)) (return #f)) ;; lists can hold #f entries
+  (dotimes (i (-> *ps5-hidden-text* length))
+    (if (= (-> opt name) (-> *ps5-hidden-text* i)) (return #t)))
+  #f)
+
+(defun ps5-pruned ((src (array game-option)))
+  "src without hidden entries (a cached copy, refreshed from src), or src itself when nothing is hidden"
+  (let ((hide 0))
+    (dotimes (i (-> src length))
+      (if (ps5-hidden-option? (-> src i)) (+! hide 1)))
+    (if (zero? hide) (return src)))
+  (let ((dst (the-as (array game-option) #f)))
+    (dotimes (i (-> *ps5-prune-src* length))
+      (when (= (-> *ps5-prune-src* i) src) (set! dst (the-as (array game-option) (-> *ps5-prune-dst* i))) (set! i 1000)))
+    (when (not dst)
+      (dotimes (i (-> *ps5-prune-src* length))
+        (when (zero? (the-as int (-> *ps5-prune-src* i))) ;; a new global array is zero filled
+          (set! dst (new 'global 'boxed-array game-option (-> src length)))
+          (set! (-> *ps5-prune-src* i) src)
+          (set! (-> *ps5-prune-dst* i) dst)
+          (set! i 1000))))
+    (if (not dst) (return src))
+    (let ((n 0))
+      (dotimes (i (-> src length))
+        (when (not (ps5-hidden-option? (-> src i)))
+          (set! (-> dst n) (-> src i))
+          (+! n 1)))
+      (set! (-> dst length) n))
+    dst))
+
+(defun ps5-prune-remap! ()
+  (dotimes (i (-> *options-remap* length))
+    (let ((l (-> *options-remap* i)))
+      (if (and l (nonzero? l)) (set! (-> *options-remap* i) (ps5-pruned l)))))
+  0)
+
+(defun init-game-options ((obj progress))"""
+edit("j1.prune", J1, "(defun init-game-options ((obj progress))",
+     J1_PRUNE.format(ids="\n  ".join(f"(text-id {t})" for t in J1_HIDDEN)))
+edit("j1.prune.call", J1, "  ;; scroll stuff!\n  (progress-scroll-reset)\n  (none))",
+     "  (ps5-prune-remap!) ;; __ps5__ native menus\n  ;; scroll stuff!\n  (progress-scroll-reset)\n  (none))")
+
 # ---- GOAL: Jak 2 and Jak 3 progress menus (generic menu system, identical text in both games) -------------------
 GEN_FNS = """;; __ps5__ the hover cursor skips options whose should-disable? says so
 (defun ps5-menu-option-disabled? ((opt menu-option))
@@ -313,6 +378,52 @@ for g in ("jak2", "jak3"):
          f"      :name (text-id progress-frame-rate)\n      :should-disable? {DIS} ;; __ps5__\n")
     edit(f"{g}.vsync", s, "      :name (text-id progress-vsync)\n", f"      :name (text-id progress-vsync)\n      :should-disable? {DIS} ;; __ps5__\n")
     edit(f"{g}.fsr", s, GEN_LINK, GEN_FSR + GEN_LINK)
+
+# PC-only entries (quit to desktop, keyboard, mouse, window, Discord ...) are removed from the menu trees once at load,
+# matched by text id: no per-entry anchors, and entries upstream moves around are still found
+GEN_HIDDEN = """progress-quit progress-input-options-enable-keyboard progress-input-options-enable-mouse progress-menu-mouse-options
+progress-input-options-auto-hide-cursor progress-reassign-binds-keyboard progress-reassign-binds-mouse
+progress-controller-options-ignore-if-unfocused progress-controller-options-select-controller progress-discord-rpc
+progress-speedrunner-mode progress-territory progress-msaa progress-window-size progress-graphics-display
+progress-display-mode progress-vsync progress-frame-rate""".split()
+GEN_PRUNE = """;; __ps5__ native menus: PC-only entries are removed from the menu trees at load (matched by text id)
+(define *ps5-hidden-text* (new 'static 'boxed-array :type text-id
+  {ids}))
+
+(defun ps5-hidden-option? ((opt menu-option))
+  (if (not (and (nonzero? opt) opt (type? opt menu-option))) (return #f))
+  (dotimes (i (-> *ps5-hidden-text* length))
+    (if (= (-> opt name) (-> *ps5-hidden-text* i)) (return #t)))
+  #f)
+
+(defun-recursive ps5-prune-menu! int ((obj basic))
+  "drop hidden entries from a menu-option-list, scrolling page or link target, recursively"
+  (let ((opts (the-as (array menu-option) #f)))
+    (cond
+      ((type? obj menu-option-list) (set! opts (-> (the-as menu-option-list obj) options)))
+      ((type? obj menu-generic-scrolling-page) (set! opts (-> (the-as menu-generic-scrolling-page obj) menu-options)))
+      ((type? obj menu-generic-link-option) (set! obj (-> (the-as menu-generic-link-option obj) target))
+       (if (and obj (nonzero? obj)) (set! opts (-> (the-as menu-option-list obj) options)))))
+    (when (and opts (nonzero? opts))
+      (let ((n 0))
+        (dotimes (i (-> opts length))
+          (let ((o (-> opts i)))
+            (when (not (ps5-hidden-option? o))
+              (if (and (nonzero? o) o) (ps5-prune-menu! o))
+              (set! (-> opts n) o)
+              (+! n 1))))
+        (set! (-> opts length) n))))
+  0)
+
+{calls}
+"""
+GEN_ROOTS = {"jak2": "*title-pc* *options-pc* *game-options-pc* *game-options-title-pc* *graphic-options-pc*",
+             "jak3": "*title-pc* *options-options-pc* *camera-options-pc* *game-options-pc* *game-options-title-pc* *graphic-options-pc*"}
+for g in ("jak2", "jak3"):
+    calls = "\n".join(f"(ps5-prune-menu! {r})" for r in GEN_ROOTS[g].split())
+    ids = "\n  ".join(f"(text-id {t})" for t in GEN_HIDDEN)
+    edit(f"{g}.prune", GS.format(g=g), "(define *frame-rate-disclaimer-options*",
+         GEN_PRUNE.format(ids=ids, calls=calls) + "\n(define *frame-rate-disclaimer-options*")
 
 
 # ---- helpers ----------------------------------------------------------------------------------------------------
@@ -390,7 +501,7 @@ def patch_json(failed):
 
 def emit_manifest():
     files = sorted({rp(f) for _, f, _, _ in EDITS})
-    anchors = [{"id": f"ingame.{eid}", "file": f, "kind": "text", "text": old, "count": 1} for eid, f, old, _ in EDITS]
+    anchors = [{"id": f"ingame.{eid}", "file": f, "kind": "text", "text": old, "count": 1} for eid, f, old, _ in EDITS if not eid.startswith("upg.")]
     step = {
         "id": "ingame-settings", "kind": "script", "path": "patch_ps5_ingame_settings.py",
         "description": "PS5 in-game options (Jak 1/2/3): grey out and skip window/monitor/display mode/vsync/fps options, force fullscreen+vsync+60 fps at settings load, add Upscaling (FSR) and FSR sharpness entries (kernel fns pc-ps5-get-setting / pc-ps5-set-setting!)",
@@ -418,7 +529,7 @@ def main():
         text = read(path)
         orig = text
         for eid, old, new in items:
-            if new in text:
+            if new in text or (eid.startswith("upg.") and old not in text):
                 continue
             if text.count(old) != 1:
                 print(f"PATCH FAILED {eid} in {f}: expected 1 match, found {text.count(old)}; {anchor_report(text, old)}")

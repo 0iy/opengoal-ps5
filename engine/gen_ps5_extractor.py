@@ -124,8 +124,8 @@ def main():
     with open(os.path.join(OUT, "build.ninja"), "w") as n:
         n.write("ninja_required_version = 1.5\n")
         n.write(f"wrap = {WRAP}\nsdk = {SDK}\n")
-        n.write("rule cxx\n  command = env PS5_PAYLOAD_SDK=$sdk sh $wrap $std -O2 -w -fexceptions -frtti -ffunction-sections -fdata-sections $flags -MD -MF $out.d -c $in -o $out\n  depfile = $out.d\n  deps = gcc\n  description = CXX $out\n")
-        n.write("rule cc\n  command = env PS5_PAYLOAD_SDK=$sdk sh $wrap $std -O2 -w -ffunction-sections -fdata-sections $flags -MD -MF $out.d -c $in -o $out\n  depfile = $out.d\n  deps = gcc\n  description = CC $out\n")
+        n.write("rule cxx\n  command = env PS5_PAYLOAD_SDK=$sdk CCACHE_COMPILERCHECK=content CCACHE_COMPILERTYPE=clang ccache $wrap $std -O2 -w -fexceptions -frtti -ffunction-sections -fdata-sections $flags -MD -MF $out.d -c $in -o $out\n  depfile = $out.d\n  deps = gcc\n  description = CXX $out\n")
+        n.write("rule cc\n  command = env PS5_PAYLOAD_SDK=$sdk CCACHE_COMPILERCHECK=content CCACHE_COMPILERTYPE=clang ccache $wrap $std -O2 -w -ffunction-sections -fdata-sections $flags -MD -MF $out.d -c $in -o $out\n  depfile = $out.d\n  deps = gcc\n  description = CC $out\n")
         for obj, src, std, flags, lang in rules:
             n.write(f"build {obj}: {lang} {src}\n  std = {std}\n  flags = {flags}\n")
         n.write("rule ar\n  command = rm -f $out && llvm-ar-18 rcs $out $in\n  description = AR $out\n")

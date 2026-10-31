@@ -156,8 +156,9 @@ def main():
         n.write("ninja_required_version = 1.5\n")
         n.write(f"wrap = {WRAP}\n")
         n.write(f"sdk = {SDK}\n")
-        n.write("rule cxx\n  command = env PS5_PAYLOAD_SDK=$sdk sh $wrap $std -O2 -w -fexceptions -frtti -ffunction-sections -fdata-sections $flags -MD -MF $out.d -c $in -o $out\n  depfile = $out.d\n  deps = gcc\n  description = CXX $out\n")
-        n.write("rule cc\n  command = env PS5_PAYLOAD_SDK=$sdk sh $wrap $std -O2 -w -ffunction-sections -fdata-sections $flags -MD -MF $out.d -c $in -o $out\n  depfile = $out.d\n  deps = gcc\n  description = CC $out\n")
+        # ccache: a tree switch or `ninja -t clean` recompiles only what really changed (the wrapper script is the "compiler")
+        n.write("rule cxx\n  command = env PS5_PAYLOAD_SDK=$sdk CCACHE_COMPILERCHECK=content CCACHE_COMPILERTYPE=clang ccache $wrap $std -O2 -w -fexceptions -frtti -ffunction-sections -fdata-sections $flags -MD -MF $out.d -c $in -o $out\n  depfile = $out.d\n  deps = gcc\n  description = CXX $out\n")
+        n.write("rule cc\n  command = env PS5_PAYLOAD_SDK=$sdk CCACHE_COMPILERCHECK=content CCACHE_COMPILERTYPE=clang ccache $wrap $std -O2 -w -ffunction-sections -fdata-sections $flags -MD -MF $out.d -c $in -o $out\n  depfile = $out.d\n  deps = gcc\n  description = CC $out\n")
         n.write("rule nasm\n  command = nasm -f elf64 -o $out $in\n  description = NASM $out\n")
         for obj, src, std, flags, lang in rules:
             n.write(f"build {obj}: {lang} {src}\n  std = {std}\n  flags = {flags}\n")
