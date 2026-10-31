@@ -15,6 +15,7 @@ struct Ps5Settings {
   int upscale = 0;     // 0 off, 1 quality 83%, 2 balanced 67%, 3 performance 50%, 4 auto (FSR 1.0)
   int sharpness = 7;   // FSR RCAS strength 0..10
   int lazy_mips = 0;   // lazy / reduced mipmap generation, experimental (1 = on)
+  int area = 100;      // display area in percent (90..100): the final image shrinks around the centre (TV overscan)
 };
 
 struct LaunchChoice {

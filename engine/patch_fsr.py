@@ -601,13 +601,15 @@ c = rep(c, "    window_blit_src = &m_fbo_state.resources.render_buffer;\n  }\n",
         "    window_blit_src = m_fbo_state.render_fbo;  // ps5_fsr: render_buffer or a pooled smaller target\n  }\n")
 c = rep(c, """  glViewport(render_state->draw_offset_x, render_state->draw_offset_y, render_state->draw_region_w,
              render_state->draw_region_h);
-  glBindTexture(GL_TEXTURE_2D, *window_blit_src->tex_id);""", """  if (m_fsr.safe_area) {  // __ps5__ safe area: black border around the shrunk image
+  glBindTexture(GL_TEXTURE_2D, *window_blit_src->tex_id);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);""", """  glViewport(m_fsr.win_x, m_fsr.win_y, m_fsr.win_w, m_fsr.win_h);  // ps5_fsr: window pixels
+  glBindTexture(GL_TEXTURE_2D, *window_blit_src->tex_id);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  if (m_fsr.safe_area) {  // __ps5__ safe area: black border around the shrunk image (after the bind: never the source)
     glDisable(GL_SCISSOR_TEST);
     glClearColor(0.f, 0.f, 0.f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
-  }
-  glViewport(m_fsr.win_x, m_fsr.win_y, m_fsr.win_w, m_fsr.win_h);  // ps5_fsr: window pixels
-  glBindTexture(GL_TEXTURE_2D, *window_blit_src->tex_id);""")
+  }""")
 c = rep(c, "  glActiveTexture(GL_TEXTURE0);\n  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);\n\n  glBindBuffer(GL_ARRAY_BUFFER, 0);",
         "  glActiveTexture(GL_TEXTURE0);\n  if (!(m_fsr.active && fsr_present(window_blit_src, brightness_contrast_color, brightness_contrast_alpha)))\n    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);\n\n  glBindBuffer(GL_ARRAY_BUFFER, 0);")
 

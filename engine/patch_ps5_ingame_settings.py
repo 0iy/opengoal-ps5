@@ -26,6 +26,9 @@ def rp(rel):
 
 
 EDITS = []  # (id, file, old, new)
+# edits whose new text a later edit inserts into: done when this marker (a line of their own new text) is present
+DONE = {"j1.fsr": ";; __ps5__ FSR entries: sliders", "j1.state": ";; __ps5__ storage for the two FSR sliders",
+        "jak2.fsr": ";; __ps5__ FSR entries. The launcher", "jak3.fsr": ";; __ps5__ FSR entries. The launcher"}
 
 
 def edit(eid, path, old, new):
@@ -95,11 +98,16 @@ edit("jak2.textid", "goal_src/jak2/engine/ui/text-id-h.gc", "  (progress-vsync #
 edit("jak3.textid", "goal_src/jak3/engine/ui/text-h.gc", "  (progress-vsync #x120d)\n",
      "  (progress-vsync #x120d)\n  (progress-ps5-upscale #x1f10)\n  (progress-ps5-sharpness #x1f11)\n")
 
+# display area (setting id 2, percent 90..100): separate edits anchored on the FSR ones, so trees patched before get it too
+edit("jak1.textid.area", "goal_src/jak1/engine/ui/text-h.gc", "  (ps5-sharpness #x1f11)\n", "  (ps5-sharpness #x1f11)\n  (ps5-area #x1f12)\n")
+for g, f in (("jak2", "goal_src/jak2/engine/ui/text-id-h.gc"), ("jak3", "goal_src/jak3/engine/ui/text-h.gc")):
+    edit(f"{g}.textid.area", f, "  (progress-ps5-sharpness #x1f11)\n", "  (progress-ps5-sharpness #x1f11)\n  (progress-ps5-area #x1f12)\n")
+
 # text JSON (appended to every game_custom_text_*.json of the game; English everywhere, no per-language translation)
 JSON_TEXT = {
-    "jak1": {"1f10": "UPSCALING (FSR)", "1f11": "FSR SHARPNESS"},
-    "jak2": {"1f10": "Upscaling (FSR)", "1f11": "FSR Sharpness"},
-    "jak3": {"1f10": "Upscaling (FSR)", "1f11": "FSR Sharpness"},
+    "jak1": {"1f10": "UPSCALING (FSR)", "1f11": "FSR SHARPNESS", "1f12": "DISPLAY AREA"},
+    "jak2": {"1f10": "Upscaling (FSR)", "1f11": "FSR Sharpness", "1f12": "Display Area"},
+    "jak3": {"1f10": "Upscaling (FSR)", "1f11": "FSR Sharpness", "1f12": "Display Area"},
 }
 
 # ---- GOAL: shared pckernel-common.gc (used by all three games; jak2/jak3 build it from the jak1 folder) -------
@@ -265,6 +273,9 @@ J1_PRUNE = """;; __ps5__ native menus: PC-only entries are hidden by giving each
 
 (defun ps5-hidden-option? ((opt game-option))
   (if (not (and (nonzero? opt) opt)) (return #f)) ;; lists can hold #f entries
+  ;; "display" names both the PC monitor entry (always disabled: hide) and the display area slider (keep)
+  (if (= (-> opt name) (text-id display))
+      (return (and (nonzero? (-> opt option-disabled-func)) (-> opt option-disabled-func) ((-> opt option-disabled-func)))))
   (dotimes (i (-> *ps5-hidden-text* length))
     (if (= (-> opt name) (-> *ps5-hidden-text* i)) (return #t)))
   #f)
@@ -392,6 +403,10 @@ GEN_PRUNE = """;; __ps5__ native menus: PC-only entries are removed from the men
 
 (defun ps5-hidden-option? ((opt menu-option))
   (if (not (and (nonzero? opt) opt (type? opt menu-option))) (return #f))
+  ;; "Display" names both the PC monitor entry (always disabled: hide) and the display area carousel (keep)
+  (when (= (-> opt name) (text-id progress-graphics-display))
+    (let ((g (the-as menu-generic-option opt)))
+      (return (and (type? opt menu-generic-option) (nonzero? (-> g should-disable?)) (-> g should-disable?) ((-> g should-disable?))))))
   (dotimes (i (-> *ps5-hidden-text* length))
     (if (= (-> opt name) (-> *ps5-hidden-text* i)) (return #t)))
   #f)
@@ -424,6 +439,47 @@ for g in ("jak2", "jak3"):
     ids = "\n  ".join(f"(text-id {t})" for t in GEN_HIDDEN)
     edit(f"{g}.prune", GS.format(g=g), "(define *frame-rate-disclaimer-options*",
          GEN_PRUNE.format(ids=ids, calls=calls) + "\n(define *frame-rate-disclaimer-options*")
+
+# display area entry after FSR sharpness: shrinks the final image (TV overscan), applies at once (shim ps5_safe_area_ratio)
+GEN_AREA_AFTER = "      :on-confirm (lambda ((index int) (the-progress progress))\n        (pc-ps5-set-setting! 1 index)))\n"
+GEN_AREA = """    (new 'static 'menu-generic-carousel-option ;; __ps5__ display area 90..100 percent
+      :name (text-id progress-graphics-display) ;; existing text: new ids need the disc text to rebuild .TXT
+      :get-item-index-fn (lambda () (min 10 (max 0 (- (pc-ps5-get-setting 2) 90))))
+      :get-max-size-fn (lambda () 11)
+      :get-item-label-fn (lambda ((index int)) (string-format "~D%" (+ 90 index)))
+      :on-confirm (lambda ((index int) (the-progress progress))
+        (pc-ps5-set-setting! 2 (+ 90 index))))
+"""
+for g in ("jak2", "jak3"):
+    edit(f"{g}.area", GS.format(g=g), GEN_AREA_AFTER, GEN_AREA_AFTER + GEN_AREA)
+J1_AREA_AFTER = """            (lambda ((val object))
+              (pc-ps5-set-setting! 1 (the int (the-as float val)))
+              (none)))
+"""
+J1_AREA = """       (new 'static ;; __ps5__ display area 90..100 percent
+            'game-option
+            :option-type (game-option-type slider)
+            :name (text-id display) ;; existing text: new ids need the disc text to rebuild .TXT
+            :scale #t
+            :param1 90.0
+            :param2 100.0
+            :slider-step-size 1.0
+            :slider-show-decimal? #f
+            :on-change
+            (lambda ((val object))
+              (pc-ps5-set-setting! 2 (the int (the-as float val)))
+              (none)))
+"""
+edit("j1.area", J1, J1_AREA_AFTER, J1_AREA_AFTER + J1_AREA)
+# anchored after j1.state's own line: two edits inserting before the same anchor undo each other's idempotency check
+edit("j1.area.state", J1, "(define *ps5-fsr* (new 'static 'ps5-fsr-state))\n",
+     "(define *ps5-fsr* (new 'static 'ps5-fsr-state))\n"
+     ";; __ps5__ display area slider value (float, the slider code needs a float pointer)\n"
+     "(define *ps5-area* (new 'static 'array float 1))\n")
+edit("j1.area.ptr", J1, "  (set! (-> *graphic-options-pc* 8 value-to-modify) (&-> *ps5-fsr* sharpness))\n",
+     "  (set! (-> *graphic-options-pc* 8 value-to-modify) (&-> *ps5-fsr* sharpness))\n"
+     "  (set! (-> *ps5-area* 0) (the float (pc-ps5-get-setting 2)))\n"
+     "  (set! (-> *graphic-options-pc* 9 value-to-modify) (&-> *ps5-area* 0)) ;; __ps5__ display area slider\n")
 
 
 # ---- helpers ----------------------------------------------------------------------------------------------------
@@ -529,7 +585,7 @@ def main():
         text = read(path)
         orig = text
         for eid, old, new in items:
-            if new in text or (eid.startswith("upg.") and old not in text):
+            if new in text or (eid.startswith("upg.") and old not in text) or (eid in DONE and DONE[eid] in text):
                 continue
             if text.count(old) != 1:
                 print(f"PATCH FAILED {eid} in {f}: expected 1 match, found {text.count(old)}; {anchor_report(text, old)}")

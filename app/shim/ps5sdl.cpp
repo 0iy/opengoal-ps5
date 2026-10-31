@@ -611,6 +611,7 @@ extern "C" void ps5_glfix_counters(unsigned long long*, unsigned long long*, uns
 // while the game runs. Called by the renderer's final pass (engine patch_fsr.py); 1.0 = full screen.
 struct SceSystemServiceDisplaySafeAreaInfo { float ratio; uint8_t reserved[128]; };
 extern "C" int sceSystemServiceGetDisplaySafeAreaInfo(SceSystemServiceDisplaySafeAreaInfo*);
+extern "C" int ps5_ingame_get(int id);  // launcher.cpp: id 2 = own display area setting in percent
 extern "C" float ps5_safe_area_ratio(void) {
   static float ratio = 1.0f;
   static uint64_t next_ns = 0;
@@ -627,7 +628,9 @@ extern "C" float ps5_safe_area_ratio(void) {
       ratio = info.ratio;
     }
   }
-  return ratio;
+  // the system value reaches only licensed apps (homebrew always reads 1.0): the own setting applies when it is smaller
+  const int own = ps5_ingame_get(2);
+  return own > 0 && own < 100 && own / 100.0f < ratio ? own / 100.0f : ratio;
 }
 
 bool SDL_GL_SwapWindow(SDL_Window*) {

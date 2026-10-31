@@ -106,6 +106,7 @@ void ps5_settings_load() {
     else if (std::sscanf(line, "lazymips=%d", &v) == 1) g_settings.lazy_mips = v ? 1 : 0;
     else if (std::sscanf(line, "upscale=%d", &v) == 1) g_settings.upscale = std::clamp(v, 0, 4);
     else if (std::sscanf(line, "sharpness=%d", &v) == 1) g_settings.sharpness = std::clamp(v, 0, 10);
+    else if (std::sscanf(line, "area=%d", &v) == 1) g_settings.area = std::clamp(v, 90, 100);
   }
   std::fclose(f);
 }
@@ -116,9 +117,9 @@ void ps5_settings_save() {
     ps5_log("launcher: cannot write %s", kConfigPath);
     return;
   }
-  std::fprintf(f, "resolution=%d\nrefresh=%d\nlast_game=%d\nlang=%d\nmerge=%d\nasync=%d\nlazymips=%d\nupscale=%d\nsharpness=%d\n",
+  std::fprintf(f, "resolution=%d\nrefresh=%d\nlast_game=%d\nlang=%d\nmerge=%d\nasync=%d\nlazymips=%d\nupscale=%d\nsharpness=%d\narea=%d\n",
                g_settings.resolution, g_settings.refresh, g_settings.last_game, g_settings.lang, g_settings.merge,
-               g_settings.async_md, g_settings.lazy_mips, g_settings.upscale, g_settings.sharpness);
+               g_settings.async_md, g_settings.lazy_mips, g_settings.upscale, g_settings.sharpness, g_settings.area);
   std::fclose(f);
   // flag files read by appmain at the next start: present = non-default behaviour
   auto flag = [](const char* name, bool on) {
@@ -137,12 +138,13 @@ void ps5_settings_save() {
 // In-game options menu (goal_src, docs/INGAME_SETTINGS.md) reads and writes the FSR settings through these.
 extern "C" int ps5_ingame_get(int id) {
   const Ps5Settings& s = ps5_settings();
-  return id == 0 ? s.upscale : id == 1 ? s.sharpness : -1;
+  return id == 0 ? s.upscale : id == 1 ? s.sharpness : id == 2 ? s.area : -1;
 }
 extern "C" void ps5_ingame_set(int id, int v) {
   Ps5Settings& s = ps5_settings();
   if (id == 0) s.upscale = std::clamp(v, 0, 4);
   else if (id == 1) s.sharpness = std::clamp(v, 0, 10);
+  else if (id == 2) s.area = std::clamp(v, 90, 100);
   ps5_settings_save();
 }
 
@@ -265,7 +267,7 @@ const char* tr(Str s) { return kText[g_settings.lang ? 1 : 0][s]; }
 const char* L(const char* en, const char* de) { return g_settings.lang ? de : en; }
 
 // Settings rows. Window mode, frame rate and V-Sync are not offered here: the games' own menus show them locked (engine/patch_ps5_ingame_settings.py).
-enum SettingId { SET_RES, SET_MERGE, SET_ASYNC, SET_LAZYMIPS, SET_FSR, SET_SHARP, SET_LANG, SET_ADD, SET_COUNT };
+enum SettingId { SET_RES, SET_MERGE, SET_ASYNC, SET_LAZYMIPS, SET_FSR, SET_SHARP, SET_AREA, SET_LANG, SET_ADD, SET_COUNT };
 struct SettingRow {
   const char* name;
   std::string value;
@@ -293,6 +295,9 @@ void build_rows(SettingRow* r) {
                   "Rendert unter der Ausgabegr\xc3\xb6\xc3\x9f\x65 und skaliert mit FSR 1.0 hoch. Auto verkleinert bei niedriger Bildrate.")};
   r[SET_SHARP] = {L("Sharpness", "Sch\xc3\xa4rfe"), std::to_string(g_settings.sharpness), g_settings.upscale > 0,
                   L("FSR sharpening, 0 = off.", "FSR-Sch\xc3\xa4rfung, 0 = aus.")};
+  r[SET_AREA] = {L("Display area", "Bildbereich"), std::to_string(g_settings.area) + "%", true,
+                 L("Shrinks the picture if the TV cuts off its edges. Applies at once.",
+                   "Verkleinert das Bild, wenn der Fernseher die R\xc3\xa4nder abschneidet. Gilt sofort.")};
   r[SET_LANG] = {L("Language", "Sprache"), g_settings.lang ? "Deutsch" : "English", true, L("Launcher language.", "Sprache des Launchers.")};
   r[SET_ADD] = {tr(S_ADD_ROW), ">", true, L("Open the page to add or re-add a game.", "Seite zum Hinzuf\xc3\xbc\x67\x65n eines Spiels \xc3\xb6\x66\x66nen.")};
 }
@@ -523,6 +528,7 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
           case SET_LAZYMIPS: g_settings.lazy_mips = 1 - g_settings.lazy_mips; break;
           case SET_FSR: g_settings.upscale = (g_settings.upscale + 5 + dir) % 5; break;
           case SET_SHARP: g_settings.sharpness = std::clamp(g_settings.sharpness + dir, 0, 10); break;
+          case SET_AREA: g_settings.area = std::clamp(g_settings.area + dir, 90, 100); break;
           case SET_LANG: g_settings.lang = 1 - g_settings.lang; changed = false; break;
           case SET_ADD: scr.id = Screen::Import; changed = false; break;
           default: changed = false; break;
