@@ -468,6 +468,74 @@ SDL_FunctionPointer SDL_GL_GetProcAddress(const char* name) {
 bool SDL_GL_SetSwapInterval(int interval) { return eglSwapInterval(g.dpy, interval) == EGL_TRUE; }
 extern "C" void ps5_profile_tick();
 
+// Debug aid: config/burst.txt holding N (1..48) captures the next N frames back to back for a frame-by-frame look.
+// The frames are copied on the GPU (half size, no stall), then read back one per frame afterwards and saved as
+// log/burst_NN.ppm; a plain read per frame would stall each frame ~400 ms (tiled readback) and change what it records.
+static void burst_capture(int w, int h) {
+  using GenFn = void (*)(int, unsigned*);
+  using BindFn = void (*)(unsigned, unsigned);
+  using StorFn = void (*)(unsigned, int, unsigned, int, int);
+  using AttFn = void (*)(unsigned, unsigned, unsigned, unsigned, int);
+  using BlitFn = void (*)(int, int, int, int, int, int, int, int, unsigned, unsigned);
+  using ReadFn = void (*)(int, int, int, int, unsigned, unsigned, void*);
+  using PixFn = void (*)(unsigned, int);
+  using GetFn = void (*)(unsigned, int*);
+  static int n = 0, taken = 0, read = 0, poll = 0;
+  static unsigned tex[48], fbo[48];
+  const int bw = w / 2, bh = h / 2;
+  if (n == 0) {
+    if (++poll % 30) return;
+    FILE* f = std::fopen("/data/opengoal/config/burst.txt", "r");
+    if (!f) return;
+    if (std::fscanf(f, "%d", &n) != 1) n = 24;
+    std::fclose(f);
+    std::remove("/data/opengoal/config/burst.txt");
+    n = n < 1 ? 1 : n > 48 ? 48 : n;
+    taken = read = 0;
+    ps5_log("burst: capturing %d frames at %dx%d", n, bw, bh);
+  }
+  auto gl = [](const char* s) { return const_cast<void*>(ps5_gl_lookup(s)); };
+  auto get = reinterpret_cast<GetFn>(gl("glGetIntegerv"));
+  auto bindfb = reinterpret_cast<BindFn>(gl("glBindFramebuffer"));
+  int old_draw = 0, old_read = 0, old_tex = 0;
+  get(0x8CA6, &old_draw);  // DRAW_FRAMEBUFFER_BINDING
+  get(0x8CAA, &old_read);  // READ_FRAMEBUFFER_BINDING
+  get(0x8069, &old_tex);   // TEXTURE_BINDING_2D
+  if (taken < n) {  // copy this frame's screen into texture `taken`
+    auto bindtex = reinterpret_cast<BindFn>(gl("glBindTexture"));
+    reinterpret_cast<GenFn>(gl("glGenTextures"))(1, &tex[taken]);
+    bindtex(0x0DE1, tex[taken]);
+    reinterpret_cast<StorFn>(gl("glTexStorage2D"))(0x0DE1, 1, 0x8058 /*RGBA8*/, bw, bh);
+    reinterpret_cast<GenFn>(gl("glGenFramebuffers"))(1, &fbo[taken]);
+    bindfb(0x8CA9 /*DRAW*/, fbo[taken]);
+    reinterpret_cast<AttFn>(gl("glFramebufferTexture2D"))(0x8CA9, 0x8CE0, 0x0DE1, tex[taken], 0);
+    bindfb(0x8CA8 /*READ*/, 0);
+    reinterpret_cast<BlitFn>(gl("glBlitFramebuffer"))(0, 0, w, h, 0, 0, bw, bh, 0x4000 /*COLOR*/, 0x2601 /*LINEAR*/);
+    ++taken;
+  } else {  // read back one per frame
+    std::vector<unsigned char> px(size_t(bw) * bh * 3);
+    bindfb(0x8CA8, fbo[read]);
+    reinterpret_cast<PixFn>(gl("glPixelStorei"))(0x0D05, 1);
+    reinterpret_cast<ReadFn>(gl("glReadPixels"))(0, 0, bw, bh, 0x1907, 0x1401, px.data());
+    char path[64];
+    std::snprintf(path, sizeof path, "/data/opengoal/log/burst_%02d.ppm", read);
+    if (FILE* f = std::fopen(path, "wb")) {
+      std::fprintf(f, "P6\n%d %d\n255\n", bw, bh);
+      for (int y = bh - 1; y >= 0; --y) std::fwrite(px.data() + size_t(y) * bw * 3, 1, size_t(bw) * 3, f);
+      std::fclose(f);
+    }
+    reinterpret_cast<GenFn>(gl("glDeleteFramebuffers"))(1, &fbo[read]);
+    reinterpret_cast<GenFn>(gl("glDeleteTextures"))(1, &tex[read]);
+    if (++read == n) {
+      ps5_log("burst: %d frames saved", n);
+      n = 0;
+    }
+  }
+  bindfb(0x8CA9, unsigned(old_draw));
+  bindfb(0x8CA8, unsigned(old_read));
+  reinterpret_cast<BindFn>(gl("glBindTexture"))(0x0DE1, unsigned(old_tex));
+}
+
 // Debug aid: with /data/opengoal/config/shot.txt present, save the frame (binary PPM) every ~20 s of play.
 extern "C" unsigned ps5_glfix_end_frame();
 extern "C" bool ps5_dbg_shot_pending();
@@ -675,6 +743,7 @@ bool SDL_GL_SwapWindow(SDL_Window*) {
   static uint64_t window_start = 0, swap_ns = 0, last_end = 0, outside_ns = 0;
   static int frames = 0;
   maybe_capture_frame(g.win_w, g.win_h);
+  burst_capture(g.win_w, g.win_h);
   const uint64_t before = now_ns();
   const uint64_t last_end_prev = last_end;
   if (last_end) outside_ns += before - last_end;

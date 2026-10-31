@@ -25,7 +25,21 @@
      return nullptr;
    } else {
      existing->second->frames_since_last_used = 0;
-@@ -430,6 +441,9 @@
+@@ -420,16 +431,23 @@
+     }
+   }
+ 
++#ifndef __ps5__
+   for (const auto& [name, lev] : m_loaded_tfrag3_levels) {
+     if (lev->frames_since_last_used > 180) {
+       return &name;
+     }
+   }
++#endif
++  // __ps5__ loader-unload: never drop a level the game still wants. With the lower level cap a level the renderer did
++  // not draw for 3 s (pause menu open) was evicted and came back with black geometry for a few frames.
+   return nullptr;
+ }
  
  void Loader::update(TexturePool& texture_pool) {
    Timer loader_timer;
@@ -35,7 +49,7 @@
  
    if (m_want_reload) {
      std::unique_lock lk(m_loader_mutex);
-@@ -531,7 +545,14 @@
+@@ -531,7 +549,14 @@
      auto evt = scoped_prof("gpu-unload");
      // try to remove levels.
      Timer unload_timer;
