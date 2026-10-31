@@ -113,9 +113,9 @@ for g, (t0, t1, t2) in TEXT_FALLBACK.items():
          "  ;; og:preserve-this call custom function\n  (lookup-text-impl! this arg0 arg1 #f))",
          "  ;; og:preserve-this call custom function\n"
          "  ;; __ps5__ text fallback: PS5 settings texts missing from the installed .TXT files\n"
-         "  (or (lookup-text-impl! this arg0 #t #f)\n"
+         "  (the-as string (or (lookup-text-impl! this arg0 #t #f)\n"
          f"      (case (the int arg0) ((#x1f10) \"{t0}\") ((#x1f11) \"{t1}\") ((#x1f12) \"{t2}\") (else #f))\n"
-         "      (lookup-text-impl! this arg0 arg1 #f)))")
+         "      (lookup-text-impl! this arg0 arg1 #f))))")
 
 # text JSON (appended to every game_custom_text_*.json of the game; English everywhere, no per-language translation)
 JSON_TEXT = {
