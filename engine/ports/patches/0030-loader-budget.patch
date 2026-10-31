@@ -1,22 +1,23 @@
-diff --git a/game/graphics/opengl_renderer/loader/LoaderStages.cpp b/game/graphics/opengl_renderer/loader/LoaderStages.cpp
-index 2a3ff372e..8c7da1752 100644
 --- a/game/graphics/opengl_renderer/loader/LoaderStages.cpp
 +++ b/game/graphics/opengl_renderer/loader/LoaderStages.cpp
-@@ -4,7 +4,13 @@
+@@ -4,7 +4,16 @@
  
  #include "common/global_profiler/GlobalProfiler.h"
  
 +// __ps5__ load-budget: the PS5 driver is CPU bound near 16 ms per frame, so 4.5 ms of uploads per frame shows
 +// as stutter while levels stream in (driving fast in the city); load slower but smoother.
 +#ifdef __ps5__
-+constexpr float LOAD_BUDGET = 2.0f;
++// __ps5__ load-budget: slow and smooth while a level streams in ahead of time; full speed (more than upstream) once the
++// renderer asks for a level that is not loaded yet (a door opened: missing geometry is worse than one long frame)
++extern bool ps5_loader_urgent();
++#define LOAD_BUDGET (ps5_loader_urgent() ? 8.0f : 2.0f)
 +#else
  constexpr float LOAD_BUDGET = 4.5f;
 +#endif
  
  /*!
   * Upload a texture to the GPU, and give it to the pool.
-@@ -17,8 +23,8 @@ u64 add_texture(TexturePool& pool, const tfrag3::Texture& tex, bool is_common) {
+@@ -17,8 +26,8 @@
    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex.w, tex.h, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV,
                 tex.data.data());
    glGenerateMipmap(GL_TEXTURE_2D);
@@ -27,12 +28,12 @@ index 2a3ff372e..8c7da1752 100644
    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, aniso);
    if (tex.load_to_pool) {
      TextureInput in;
-@@ -40,7 +46,11 @@ class TextureLoaderStage : public LoaderStage {
+@@ -40,7 +49,11 @@
   public:
    TextureLoaderStage() : LoaderStage("texture") {}
    bool run(Timer& timer, LoaderInput& data) override {
 +#ifdef __ps5__  // __ps5__ load-budget
-+    constexpr int MAX_TEX_BYTES_PER_FRAME = 512 * 1024;
++    const int MAX_TEX_BYTES_PER_FRAME = ps5_loader_urgent() ? 4096 * 1024 : 512 * 1024;
 +#else
      constexpr int MAX_TEX_BYTES_PER_FRAME = 1024 * 1024;
 +#endif

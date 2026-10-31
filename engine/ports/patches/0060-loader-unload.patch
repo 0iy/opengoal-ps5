@@ -1,6 +1,41 @@
 --- a/game/graphics/opengl_renderer/loader/Loader.cpp
 +++ b/game/graphics/opengl_renderer/loader/Loader.cpp
-@@ -531,7 +531,14 @@
+@@ -11,6 +11,14 @@
+ 
+ #include "third-party/imgui/imgui.h"
+ 
++#ifdef __ps5__
++// __ps5__ load-budget: frames counted by Loader::update; urgent while a requested level is still missing
++static int ps5_frame = 0, ps5_urgent_until = 0;
++bool ps5_loader_urgent() {
++  return ps5_frame < ps5_urgent_until;
++}
++#endif
++
+ Loader::Loader(const fs::path& base_path, int max_levels)
+     : m_base_path(base_path), m_max_levels(max_levels) {
+   m_loader_thread = std::thread(&Loader::loader_thread, this);
+@@ -37,6 +45,9 @@
+   std::unique_lock<std::mutex> lk(m_loader_mutex);
+   const auto& existing = m_loaded_tfrag3_levels.find(level_name);
+   if (existing == m_loaded_tfrag3_levels.end()) {
++#ifdef __ps5__
++    ps5_urgent_until = ps5_frame + 30;  // __ps5__ load-budget: the renderer wants this level now
++#endif
+     return nullptr;
+   } else {
+     existing->second->frames_since_last_used = 0;
+@@ -430,6 +441,9 @@
+ 
+ void Loader::update(TexturePool& texture_pool) {
+   Timer loader_timer;
++#ifdef __ps5__
++  ++ps5_frame;
++#endif
+ 
+   if (m_want_reload) {
+     std::unique_lock lk(m_loader_mutex);
+@@ -531,7 +545,14 @@
      auto evt = scoped_prof("gpu-unload");
      // try to remove levels.
      Timer unload_timer;

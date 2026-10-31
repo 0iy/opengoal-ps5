@@ -1,6 +1,6 @@
 // ps5key: ESP32-S3 on a PS5 USB port as a USB keyboard, driven over Wi-Fi by tools/ps5wake.py.
 //
-// First start (no Wi-Fi saved): opens the access point "ps5key-setup"; connect a phone, open http://192.168.4.1 and
+// First start (no Wi-Fi saved): opens the access point "ps5key-setup"; connect a phone, open the gateway address of that network in a browser and
 // enter the home Wi-Fi. Saved in flash (Preferences), never in this source. Hold BOOT (GPIO0) at power-up to forget it.
 //
 // API (port 80, also http://ps5key.local):

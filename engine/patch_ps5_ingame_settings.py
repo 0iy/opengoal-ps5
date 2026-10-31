@@ -103,6 +103,20 @@ edit("jak1.textid.area", "goal_src/jak1/engine/ui/text-h.gc", "  (ps5-sharpness 
 for g, f in (("jak2", "goal_src/jak2/engine/ui/text-id-h.gc"), ("jak3", "goal_src/jak3/engine/ui/text-h.gc")):
     edit(f"{g}.textid.area", f, "  (progress-ps5-sharpness #x1f11)\n", "  (progress-ps5-sharpness #x1f11)\n  (progress-ps5-area #x1f12)\n")
 
+# built-in fallback for the PS5 texts: the console's .TXT files are built at import (from the disc) and lack them, and a
+# PC without the disc cannot rebuild them; .TXT entries still win when present
+TEXT_FALLBACK = {"jak1": ("UPSCALING (FSR)", "FSR SHARPNESS", "DISPLAY AREA"),
+                 "jak2": ("Upscaling (FSR)", "FSR Sharpness", "Display Area"),
+                 "jak3": ("Upscaling (FSR)", "FSR Sharpness", "Display Area")}
+for g, (t0, t1, t2) in TEXT_FALLBACK.items():
+    edit(f"{g}.textfallback", f"goal_src/{g}/engine/ui/text.gc",
+         "  ;; og:preserve-this call custom function\n  (lookup-text-impl! this arg0 arg1 #f))",
+         "  ;; og:preserve-this call custom function\n"
+         "  ;; __ps5__ text fallback: PS5 settings texts missing from the installed .TXT files\n"
+         "  (or (lookup-text-impl! this arg0 #t #f)\n"
+         f"      (case (the int arg0) ((#x1f10) \"{t0}\") ((#x1f11) \"{t1}\") ((#x1f12) \"{t2}\") (else #f))\n"
+         "      (lookup-text-impl! this arg0 arg1 #f)))")
+
 # text JSON (appended to every game_custom_text_*.json of the game; English everywhere, no per-language translation)
 JSON_TEXT = {
     "jak1": {"1f10": "UPSCALING (FSR)", "1f11": "FSR SHARPNESS", "1f12": "DISPLAY AREA"},
@@ -443,7 +457,7 @@ for g in ("jak2", "jak3"):
 # display area entry after FSR sharpness: shrinks the final image (TV overscan), applies at once (shim ps5_safe_area_ratio)
 GEN_AREA_AFTER = "      :on-confirm (lambda ((index int) (the-progress progress))\n        (pc-ps5-set-setting! 1 index)))\n"
 GEN_AREA = """    (new 'static 'menu-generic-carousel-option ;; __ps5__ display area 90..100 percent
-      :name (text-id progress-graphics-display) ;; existing text: new ids need the disc text to rebuild .TXT
+      :name (text-id progress-ps5-area)
       :get-item-index-fn (lambda () (min 10 (max 0 (- (pc-ps5-get-setting 2) 90))))
       :get-max-size-fn (lambda () 11)
       :get-item-label-fn (lambda ((index int)) (string-format "~D%" (+ 90 index)))
@@ -459,7 +473,7 @@ J1_AREA_AFTER = """            (lambda ((val object))
 J1_AREA = """       (new 'static ;; __ps5__ display area 90..100 percent
             'game-option
             :option-type (game-option-type slider)
-            :name (text-id display) ;; existing text: new ids need the disc text to rebuild .TXT
+            :name (text-id ps5-area)
             :scale #t
             :param1 90.0
             :param2 100.0

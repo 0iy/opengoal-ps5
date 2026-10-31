@@ -107,6 +107,7 @@ void ps5_settings_load() {
     else if (std::sscanf(line, "upscale=%d", &v) == 1) g_settings.upscale = std::clamp(v, 0, 4);
     else if (std::sscanf(line, "sharpness=%d", &v) == 1) g_settings.sharpness = std::clamp(v, 0, 10);
     else if (std::sscanf(line, "area=%d", &v) == 1) g_settings.area = std::clamp(v, 90, 100);
+    else if (std::sscanf(line, "perf=%d", &v) == 1) g_settings.perf = v ? 1 : 0;
   }
   std::fclose(f);
 }
@@ -117,9 +118,9 @@ void ps5_settings_save() {
     ps5_log("launcher: cannot write %s", kConfigPath);
     return;
   }
-  std::fprintf(f, "resolution=%d\nrefresh=%d\nlast_game=%d\nlang=%d\nmerge=%d\nasync=%d\nlazymips=%d\nupscale=%d\nsharpness=%d\narea=%d\n",
+  std::fprintf(f, "resolution=%d\nrefresh=%d\nlast_game=%d\nlang=%d\nmerge=%d\nasync=%d\nlazymips=%d\nupscale=%d\nsharpness=%d\narea=%d\nperf=%d\n",
                g_settings.resolution, g_settings.refresh, g_settings.last_game, g_settings.lang, g_settings.merge,
-               g_settings.async_md, g_settings.lazy_mips, g_settings.upscale, g_settings.sharpness, g_settings.area);
+               g_settings.async_md, g_settings.lazy_mips, g_settings.upscale, g_settings.sharpness, g_settings.area, g_settings.perf);
   std::fclose(f);
   // flag files read by appmain at the next start: present = non-default behaviour
   auto flag = [](const char* name, bool on) {
@@ -138,13 +139,14 @@ void ps5_settings_save() {
 // In-game options menu (goal_src, docs/INGAME_SETTINGS.md) reads and writes the FSR settings through these.
 extern "C" int ps5_ingame_get(int id) {
   const Ps5Settings& s = ps5_settings();
-  return id == 0 ? s.upscale : id == 1 ? s.sharpness : id == 2 ? s.area : -1;
+  return id == 0 ? s.upscale : id == 1 ? s.sharpness : id == 2 ? s.area : id == 3 ? s.perf : -1;
 }
 extern "C" void ps5_ingame_set(int id, int v) {
   Ps5Settings& s = ps5_settings();
   if (id == 0) s.upscale = std::clamp(v, 0, 4);
   else if (id == 1) s.sharpness = std::clamp(v, 0, 10);
   else if (id == 2) s.area = std::clamp(v, 90, 100);
+  else if (id == 3) s.perf = v ? 1 : 0;
   ps5_settings_save();
 }
 
@@ -267,7 +269,7 @@ const char* tr(Str s) { return kText[g_settings.lang ? 1 : 0][s]; }
 const char* L(const char* en, const char* de) { return g_settings.lang ? de : en; }
 
 // Settings rows. Window mode, frame rate and V-Sync are not offered here: the games' own menus show them locked (engine/patch_ps5_ingame_settings.py).
-enum SettingId { SET_RES, SET_MERGE, SET_ASYNC, SET_LAZYMIPS, SET_FSR, SET_SHARP, SET_AREA, SET_LANG, SET_ADD, SET_COUNT };
+enum SettingId { SET_RES, SET_MERGE, SET_ASYNC, SET_LAZYMIPS, SET_FSR, SET_SHARP, SET_AREA, SET_PERF, SET_LANG, SET_ADD, SET_COUNT };
 struct SettingRow {
   const char* name;
   std::string value;
@@ -298,6 +300,9 @@ void build_rows(SettingRow* r) {
   r[SET_AREA] = {L("Display area", "Bildbereich"), std::to_string(g_settings.area) + "%", true,
                  L("Shrinks the picture if the TV cuts off its edges. Applies at once.",
                    "Verkleinert das Bild, wenn der Fernseher die R\xc3\xa4nder abschneidet. Gilt sofort.")};
+  r[SET_PERF] = {L("Performance overlay", "Leistungsanzeige"), onoff(g_settings.perf), true,
+                 L("Frame rate, frame time, CPU time of the renderer and GPU wait in the top left corner while playing.",
+                   "Bildrate, Frame-Zeit, CPU-Zeit des Renderers und GPU-Wartezeit oben links im Spiel.")};
   r[SET_LANG] = {L("Language", "Sprache"), g_settings.lang ? "Deutsch" : "English", true, L("Launcher language.", "Sprache des Launchers.")};
   r[SET_ADD] = {tr(S_ADD_ROW), ">", true, L("Open the page to add or re-add a game.", "Seite zum Hinzuf\xc3\xbc\x67\x65n eines Spiels \xc3\xb6\x66\x66nen.")};
 }
@@ -529,6 +534,7 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
           case SET_FSR: g_settings.upscale = (g_settings.upscale + 5 + dir) % 5; break;
           case SET_SHARP: g_settings.sharpness = std::clamp(g_settings.sharpness + dir, 0, 10); break;
           case SET_AREA: g_settings.area = std::clamp(g_settings.area + dir, 90, 100); break;
+          case SET_PERF: g_settings.perf = 1 - g_settings.perf; break;
           case SET_LANG: g_settings.lang = 1 - g_settings.lang; changed = false; break;
           case SET_ADD: scr.id = Screen::Import; changed = false; break;
           default: changed = false; break;
@@ -1017,4 +1023,81 @@ extern "C" __attribute__((force_align_arg_pointer)) void ps5_loading_overlay(int
     glDeleteProgram(g_ov.prog);
     glDeleteVertexArrays(1, &g_ov.vao);
   }
+}
+
+// ---- performance overlay (settings: "Performance overlay", ps5.cfg perf=1) ---------------------------------------------
+// Own ImGui context (the engine has its own; the launcher's is gone after the hand-off), drawn on the render thread right
+// before the swap. Real values: frame rate and frame time, CPU time of the render thread, time the CPU waited for the GPU.
+extern "C" void ps5_driver_wait_sites(unsigned long long* ns, unsigned long long* n);
+extern "C" __attribute__((force_align_arg_pointer)) void ps5_perf_overlay(int W, int H) {
+  if (!g_settings.perf) return;
+  static ImGuiContext* ctx = nullptr;
+  static bool failed = false;
+  if (failed) return;
+  ImGuiContext* prev = ImGui::GetCurrentContext();
+  if (!ctx) {
+    ctx = ImGui::CreateContext();
+    ImGui::SetCurrentContext(ctx);
+    ImGui::GetIO().IniFilename = nullptr;
+    if (!ImGui_ImplOpenGL3_Init("#version 430")) {
+      ps5_log("perf overlay: ImGui_ImplOpenGL3_Init failed");
+      failed = true;
+      ImGui::SetCurrentContext(prev);
+      return;
+    }
+  }
+  ImGui::SetCurrentContext(ctx);
+  // per-second averages
+  static uint64_t t_win = 0, t_last = 0;
+  static double cpu_win = 0, wait_win = 0, max_ms = 0;
+  static int frames = 0;
+  static char line1[96] = "", line2[96] = "";
+  timespec ts;
+  clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+  const double cpu_now = ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
+  static double cpu_prev = cpu_now;
+  unsigned long long w[4], n[4];
+  ps5_driver_wait_sites(w, n);
+  const double wait_now = (w[0] + w[1] + w[2] + w[3]) / 1e6;
+  static double wait_prev = wait_now;
+  const uint64_t tnow = SDL_GetPerformanceCounter();
+  const double freq = static_cast<double>(SDL_GetPerformanceFrequency());
+  if (!t_win) t_win = t_last = tnow;
+  const double frame_ms = (tnow - t_last) * 1e3 / freq;
+  t_last = tnow;
+  max_ms = std::max(max_ms, frame_ms);
+  cpu_win += cpu_now - cpu_prev;
+  wait_win += wait_now - wait_prev;
+  cpu_prev = cpu_now;
+  wait_prev = wait_now;
+  ++frames;
+  const double win_s = (tnow - t_win) / freq;
+  if (win_s >= 1.0) {
+    std::snprintf(line1, sizeof line1, "%.0f fps   %.1f ms (max %.1f)", frames / win_s, win_s * 1e3 / frames, max_ms);
+    std::snprintf(line2, sizeof line2, "%s %.1f ms   GPU %s %.1f ms", L("CPU render", "CPU Render"), cpu_win / frames,
+                  L("wait", "Warten"), wait_win / frames);
+    t_win = tnow;
+    cpu_win = wait_win = max_ms = 0;
+    frames = 0;
+  }
+  ImGuiIO& io = ImGui::GetIO();
+  io.DisplaySize = ImVec2(float(W), float(H));
+  io.DeltaTime = 1.0f / 60.0f;
+  io.FontGlobalScale = H / 720.0f;
+  ImGui_ImplOpenGL3_NewFrame();
+  ImGui::NewFrame();
+  ImGui::SetNextWindowPos(ImVec2(16, 16));
+  ImGui::SetNextWindowBgAlpha(0.55f);
+  ImGui::Begin("##perf", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+                                       ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings);
+  ImGui::TextUnformatted(line1);
+  ImGui::TextUnformatted(line2);
+  ImGui::End();
+  ImGui::Render();
+  GLint fb = 0;
+  glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fb);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+  glBindFramebuffer(GL_FRAMEBUFFER, fb);
+  ImGui::SetCurrentContext(prev);
 }

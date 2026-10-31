@@ -19,7 +19,7 @@ from ps5cfg import ip
 HERE = os.path.dirname(os.path.abspath(__file__))
 DDP_PORT = 9302  # PS5 device discovery (PS4: 987)
 DDP_VER = "00030010"
-ARDUINO = os.environ.get("ARDUINO_CLI", r"C:\Users\user\tools\arduino-cli\arduino-cli.exe")
+ARDUINO = os.environ.get("ARDUINO_CLI", os.path.join(os.path.expanduser("~"), "tools", "arduino-cli", "arduino-cli.exe"))
 FQBN = "esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=default"  # USB-OTG (TinyUSB), needed for the HID keyboard
 
 
@@ -141,7 +141,7 @@ def cmd_flash(port):
         return rc
     if subprocess.run([ARDUINO, "upload", "-p", port, "--fqbn", FQBN, "--input-dir", out, sketch]).returncode:
         return 1
-    print("flashed. Connect to Wi-Fi 'ps5key-setup', open http://192.168.4.1 and enter your Wi-Fi, then plug it into the PS5")
+    print("flashed. Connect to Wi-Fi 'ps5key-setup', open the gateway address of that network in a browser and enter your Wi-Fi, then plug it into the PS5")
     return 0
 
 

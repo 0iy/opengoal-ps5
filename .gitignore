@@ -52,3 +52,6 @@ nul
 /tests/qr_test
 /installer/opengoal-ps5-pack.tgz
 /notes/
+
+# arduino-cli build output of the ESP32 sketch
+/tools/ps5key/build/

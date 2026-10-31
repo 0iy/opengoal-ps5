@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Diagnostic patch for jak-project (run in WSL): log the renderer's own per-bucket profiler tree (Profiler::to_string)
-for one frame out of every 240, through ps5_log, lines prefixed 'ptree:'."""
+"""Diagnostic patch for jak-project (run in WSL): with /data/opengoal/config/ptree.txt present, log the renderer's own
+per-bucket profiler tree (Profiler::to_string) for one frame out of every 240, through ps5_log, lines prefixed 'ptree:'."""
 import os
 
 import json
@@ -15,8 +15,14 @@ old = "  m_profiler.finish();\n"
 assert s.count(old) == 1
 new = r'''  m_profiler.finish();
   {  // __ps5__ proftree
+    // building and logging the tree costs ~20 ms on the render thread (a stutter every 4 s): only with config/ptree.txt
+    static const bool ps5_tree_on = [] {
+      FILE* f = std::fopen("/data/opengoal/config/ptree.txt", "r");
+      if (f) std::fclose(f);
+      return f != nullptr;
+    }();
     static int ps5_tree_frame = 0;
-    if (++ps5_tree_frame % 240 == 0) {
+    if (ps5_tree_on && ++ps5_tree_frame % 240 == 0) {
       const std::string tree = m_profiler.to_string();
       size_t pos = 0;
       while (pos < tree.size()) {

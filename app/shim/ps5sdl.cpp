@@ -506,8 +506,15 @@ static void maybe_capture_frame(int w, int h) {
     t0 = now_ns();
     ps5_log("capture: %d shot time(s)", ntimes);
   }
-  if (next >= ntimes || (now_ns() - t0) / 1e9 < times[next]) return;
-  const int shots = next++;
+  // config/shotnow.txt: one shot of the current frame at any time (checked every 30 frames), saved as shotnow.ppm
+  static int poll = 0;
+  bool now_shot = false;
+  if (++poll % 30 == 0) {
+    struct stat st;
+    now_shot = stat("/data/opengoal/config/shotnow.txt", &st) == 0 && std::remove("/data/opengoal/config/shotnow.txt") == 0;
+  }
+  if (!now_shot && (next >= ntimes || (now_ns() - t0) / 1e9 < times[next])) return;
+  const int shots = now_shot ? -1 : next++;
   std::vector<unsigned char> px(size_t(w) * h * 3);
   using BindFn = void (*)(unsigned, unsigned);
   using PixFn = void (*)(unsigned, int);
@@ -518,11 +525,12 @@ static void maybe_capture_frame(int w, int h) {
   if (!bind || !pixelstore || !readpix) return;
   if (!main_fbo) return;
   static const bool from_screen = [] { struct stat st; return stat("/data/opengoal/config/shotscreen.txt", &st) == 0; }();  // shot of the final window image (after FSR) instead of the render buffer
-  bind(0x8CA8 /*GL_READ_FRAMEBUFFER*/, from_screen ? 0u : main_fbo);
+  bind(0x8CA8 /*GL_READ_FRAMEBUFFER*/, from_screen || now_shot ? 0u : main_fbo);  // a shotnow is what the TV shows
   pixelstore(0x0D05 /*GL_PACK_ALIGNMENT*/, 1);
   readpix(0, 0, w, h, 0x1907 /*GL_RGB*/, 0x1401 /*GL_UNSIGNED_BYTE*/, px.data());
   char path[96];
-  std::snprintf(path, sizeof path, "/data/opengoal/log/shot%d.ppm", shots);
+  if (now_shot) std::snprintf(path, sizeof path, "/data/opengoal/log/shotnow.ppm");
+  else std::snprintf(path, sizeof path, "/data/opengoal/log/shot%d.ppm", shots);
   if (FILE* f = std::fopen(path, "wb")) {
     std::fprintf(f, "P6\n%d %d\n255\n", w, h);
     for (int y = h - 1; y >= 0; --y) std::fwrite(px.data() + size_t(y) * w * 3, 1, size_t(w) * 3, f);
@@ -598,6 +606,7 @@ extern "C" void ps5_insttest_tick(void* (*)(const char*));
 extern "C" int ps5_driver_clear_report(char*, size_t);
 extern "C" void ps5_driver_scanout_reasons(unsigned long long*, unsigned long long*, unsigned long long*, unsigned long long*);
 extern "C" void ps5_loading_overlay(int w, int h);
+extern "C" void ps5_perf_overlay(int w, int h);
 extern "C" void ps5_trace_frame_tick(uint64_t frame_no, uint64_t interval_ns);
 extern "C" int sceSystemServicePowerTick(void);
 extern "C" unsigned ps5_glfix_draw_total();
@@ -662,6 +671,7 @@ bool SDL_GL_SwapWindow(SDL_Window*) {
     }
   }
   if (g_gl_phase.load() == 0 || g_gl_phase.load() == 3) ps5_loading_overlay(g.win_w, g.win_h);
+  ps5_perf_overlay(g.win_w, g.win_h);  // after the frame, before capture: screenshots show it too
   static uint64_t window_start = 0, swap_ns = 0, last_end = 0, outside_ns = 0;
   static int frames = 0;
   maybe_capture_frame(g.win_w, g.win_h);

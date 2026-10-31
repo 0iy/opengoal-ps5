@@ -491,7 +491,7 @@
    "kind": "patch",
    "path": "ports/patches/0030-loader-budget.patch",
    "required": false,
-   "description": "Level streaming uploads at most 2 ms / 512 KB of textures per frame on PS5 (stutter while driving fast in the Jak 2 city) and queries max anisotropy once.",
+   "description": "Level streaming uploads at most 2 ms / 512 KB of textures per frame on PS5 (stutter while driving fast in the Jak 2 city), 8 ms / 4 MB while the renderer waits for a missing level (Loader.cpp part in 0060), and queries max anisotropy once.",
    "touches": [
     "game/graphics/opengl_renderer/loader/LoaderStages.cpp"
    ],
