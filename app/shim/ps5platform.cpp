@@ -333,6 +333,13 @@ extern "C" void ps5_crash_handler(int sig, siginfo_t* si, void* uc_) {
     for (int i = 0; i < 44 && off < 480; ++i) off += std::snprintf(line + off, sizeof line - off, "%llx ", (unsigned long long)raw[i]);
     ps5_log("ucontext raw: %s", line);
   }
+  if (rip > 0x10000) {  // code bytes around the fault: find the instruction in a compiled object
+    const uint8_t* c = reinterpret_cast<const uint8_t*>(rip - 16);
+    char hex[200];
+    int o = 0;
+    for (int i = 0; i < 48; ++i) o += std::snprintf(hex + o, sizeof hex - o, "%02x", c[i]);
+    ps5_log("code at rip-16: %s", hex);
+  }
   // Poor man's backtrace: scan the stack for words that look like return addresses into the image.
   const uint64_t base = reinterpret_cast<uint64_t>(&ps5_log) & ~0xfffffull;
   const uint64_t lo = base > 0x4000000 ? base - 0x4000000 : 0x400000, hi = base + 0x4000000;

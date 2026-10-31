@@ -5,6 +5,7 @@
 //
 // API (port 80, also http://ps5key.local):
 //   GET /ping                  -> "ps5key ok <usb-mounted 0|1>"
+//   GET /wake                  -> USB remote wake-up (host must allow it)
 //   GET /diag                  -> USB state and event counters (why a host does not take the keyboard)
 //   GET /key?k=NAME            -> one key press (enter, esc, up, down, left, right, tab, space, home, end)
 //   GET /seq?s=enter,!800,down -> keys in order; "!N" waits N ms (max 10 s per step)
@@ -24,6 +25,7 @@ bool usb_mounted = false;
 uint32_t usb_events[8] = {0};  // count per arduino_usb_event_t (started, stopped, suspend, resume, ...)
 extern "C" bool tud_mounted(void);
 extern "C" bool tud_suspended(void);
+extern "C" bool tud_remote_wakeup(void);
 
 static int key_code(const String& k) {
   if (k == "enter") return KEY_RETURN;
@@ -119,6 +121,8 @@ void setup() {
   ArduinoOTA.setHostname("ps5key");  // later updates: tools/ps5wake.py flash --ota (no BOOT button, no unplugging)
   ArduinoOTA.begin();
   web.on("/key", handle_key);
+  // USB remote wake-up: asks a suspended host (PS5 in rest mode, USB power on) to resume, like a key press on a PC
+  web.on("/wake", [] { web.send(200, "text/plain", String("suspended=") + tud_suspended() + " sent=" + tud_remote_wakeup()); });
   web.on("/seq", handle_seq);
   web.begin();
 }

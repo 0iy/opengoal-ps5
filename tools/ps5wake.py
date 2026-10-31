@@ -52,6 +52,10 @@ def state():
 
 
 def wake():
+    try:  # USB remote wake-up through ps5key (works only while the PS5 powers its USB ports in rest mode)
+        print("ps5key:", ps5key("/wake", 5))
+    except OSError:
+        pass
     cred = int(rp_key(), 16)
     ddp(f"WAKEUP * HTTP/1.1\nclient-type:vr\nauth-type:R\nmodel:w\napp-type:r\nuser-credential:{cred}\n"
         f"device-discovery-protocol-version:{DDP_VER}\n", wait=0.2)
@@ -125,12 +129,18 @@ def cmd_jb(seq):
 
 def cmd_flash(port):
     sketch = os.path.join(HERE, "ps5key")
-    up = ["upload", "-p", port, "--fqbn", FQBN, sketch]
-    if port == "--ota":  # over Wi-Fi, needs a running ps5key with OTA (firmware since /diag)
-        up = ["upload", "-p", socket.gethostbyname(key_host()), "--protocol", "network", "--fqbn", FQBN, sketch]
-    for args in (["compile", "--fqbn", FQBN, sketch], up):
-        if subprocess.run([ARDUINO] + args).returncode:
-            return 1
+    out = os.path.join(os.path.dirname(HERE), "out", "ps5key_build")
+    if subprocess.run([ARDUINO, "compile", "--fqbn", FQBN, "--output-dir", out, sketch]).returncode:
+        return 1
+    if port == "--ota":  # over Wi-Fi to a running ps5key (ArduinoOTA, port 3232); arduino-cli only finds mDNS-announced boards
+        import glob
+        espota = glob.glob(os.path.join(os.environ["LOCALAPPDATA"], "Arduino15", "packages", "esp32", "hardware", "esp32", "*", "tools", "espota.py"))[-1]
+        rc = subprocess.run([sys.executable, espota, "-i", socket.gethostbyname(key_host()), "-p", "3232",
+                             "-f", os.path.join(out, "ps5key.ino.bin")]).returncode
+        print("updated over Wi-Fi" if rc == 0 else "OTA upload failed")
+        return rc
+    if subprocess.run([ARDUINO, "upload", "-p", port, "--fqbn", FQBN, "--input-dir", out, sketch]).returncode:
+        return 1
     print("flashed. Connect to Wi-Fi 'ps5key-setup', open http://192.168.4.1 and enter your Wi-Fi, then plug it into the PS5")
     return 0
 

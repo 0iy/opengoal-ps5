@@ -4,9 +4,12 @@
   ps5cgo.py sync [jak1 jak2 jak3] [--dry-run]
   ps5cgo.py restore [jak1 jak2 jak3]
 
-Compile the code first in WSL: goalc -g <game> --proj-path ~/jak -c '(make-group "all-code")'. For every CGO/DGO in
+Compile the code first in WSL, with the disc region of the installed game (the objects depend on it; check against
+an original object, e.g. pad.o, before uploading): GAME_TERRITORY_SCEA 0, SCEE 1 (PAL), SCEI 2, SCEK 3.
+  goalc -g <game> --user-auto --proj-path ~/jak -c '(begin (seval (set! *default-territory* 1)) (make-group "all-code"))'
+This console: jak1 and jak2 PAL (1), jak3 NTSC (0). For every CGO/DGO in
 /data/opengoal/<game>/data/out/<game>/iso, each entry that has a freshly compiled ~/jak/out/<game>/obj/<entry>.o is
-replaced by that object; art entries (no .o) stay. Only changed containers are uploaded; the originals are kept in
+replaced by that object; art entries (no "GOAL" header, even when named like code) stay. Only changed containers are uploaded; the originals are kept in
 out/cgo_backup/<game>/ for `restore`."""
 import io, os, struct, subprocess, sys
 
@@ -18,7 +21,7 @@ BACKUP = os.path.join(ROOT, "out", "cgo_backup")
 
 
 def wsl_obj_dir(game):
-    p = subprocess.run(["wsl", "bash", "-lc", f"wslpath -w ~/jak/out/{game}/obj"], capture_output=True, text=True)
+    p = subprocess.run(["wsl", "bash", "-lc", f"wslpath -w {os.environ.get('PS5CGO_TREE', '~/jak')}/out/{game}/obj"], capture_output=True, text=True)
     return p.stdout.strip()
 
 
@@ -72,7 +75,8 @@ def sync(game, dry):
         new, swapped = [], []
         for ename, payload in entries:
             p = os.path.join(objs, ename + ".o")
-            if os.path.exists(p):
+            # art entries often share the name of a code object ("sig", "grunt"): only code objects start with "GOAL"
+            if payload[:4] == b"GOAL" and os.path.exists(p):
                 fresh = open(p, "rb").read()
                 if fresh != payload:
                     swapped.append(ename)
