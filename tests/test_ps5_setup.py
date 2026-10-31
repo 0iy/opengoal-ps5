@@ -203,6 +203,11 @@ class Parsing(unittest.TestCase):
         self.assertEqual(S.make_plan(st({"install_api": 1, "busy": True}), o("0.1.1"), set()), [])
         # after the upload ran, a stubborn old version must not loop
         self.assertEqual(S.make_plan(st(old), o("0.1.1"), {"upload", "launch"}), [])
+        # up to date, but the app reports folders it cannot write: repair once (#5)
+        broken = dict(same, unwritable=["/data/opengoal/jak1"])
+        self.assertEqual(S.make_plan(st(broken), o("0.1.1"), set()), ["upload", "launch"])
+        self.assertEqual(S.make_plan(st(broken), o("0.1.1"), {"upload", "launch"}), [])
+        self.assertEqual(S.make_plan(st(dict(same, unwritable=[])), o("0.1.1"), set()), [])
         self.assertEqual(S.DATA_FORMAT, __import__("pc_import").DATA_FORMAT)
 
     def test_ddp_probe(self):

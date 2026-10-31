@@ -1,0 +1,429 @@
+--- a/game/graphics/opengl_renderer/Shader.h
++++ b/game/graphics/opengl_renderer/Shader.h
+@@ -69,6 +69,7 @@
+   SLOW_TIME = 42,
+   OCEAN_ENVMAP = 43,
+   OCEAN_ENVMAP_HAZE = 44,
++  MERC2_INST = 45,  // __ps5__ merc-instancing
+   MAX_SHADERS
+ };
+ 
+--- a/game/graphics/opengl_renderer/Shader.cpp
++++ b/game/graphics/opengl_renderer/Shader.cpp
+@@ -12,10 +12,46 @@
+   const std::string scissor_adjust = "512.0 / " + scissor_height;
+ 
+   // read the shader source
++  // __ps5__ merc-instancing: merc2_inst is merc2 with bones and lights fetched per instance from buffer textures
++  const bool merc_inst = shader_name == "merc2_inst";
++  const std::string src_name = merc_inst ? std::string("merc2") : shader_name;
+   auto vert_src =
+-      file_util::read_text_file(file_util::get_file_path({shader_folder, shader_name + ".vert"}));
++      file_util::read_text_file(file_util::get_file_path({shader_folder, src_name + ".vert"}));
+   auto frag_src =
+-      file_util::read_text_file(file_util::get_file_path({shader_folder, shader_name + ".frag"}));
++      file_util::read_text_file(file_util::get_file_path({shader_folder, src_name + ".frag"}));
++  if (merc_inst) {
++    vert_src = std::regex_replace(vert_src, std::regex("uniform (vec[34]) (light_[a-z0-9_]+);"), "$1 $2;");
++    vert_src = std::regex_replace(vert_src, std::regex("bones\\[(mats\\[[0-9]\\])\\]\\.X"), "bone_x($1)");
++    vert_src = std::regex_replace(vert_src, std::regex("bones\\[(mats\\[[0-9]\\])\\]\\.R"), "bone_r($1)");
++    vert_src = std::regex_replace(
++        vert_src, std::regex("layout \\(std140\\) uniform ub_bones \\{[^}]*\\};"),
++        "uniform samplerBuffer bones_tbo;\n"
++        "uniform usamplerBuffer inst_tbo;\n"
++        "uniform samplerBuffer lights_tbo;\n"
++        "uniform int inst_base;\n"
++        "int g_bone_base;\n"
++        "mat4 bone_x(uint m) {\n"
++        "  int b = g_bone_base + int(m) * 8;\n"
++        "  return mat4(texelFetch(bones_tbo, b), texelFetch(bones_tbo, b + 1), texelFetch(bones_tbo, b + 2), texelFetch(bones_tbo, b + 3));\n"
++        "}\n"
++        "mat3 bone_r(uint m) {\n"
++        "  int b = g_bone_base + int(m) * 8 + 4;\n"
++        "  return mat3(texelFetch(bones_tbo, b).xyz, texelFetch(bones_tbo, b + 1).xyz, texelFetch(bones_tbo, b + 2).xyz);\n"
++        "}\n"
++        "void init_inst() {\n"
++        "  uvec2 d = texelFetch(inst_tbo, inst_base + gl_InstanceID).xy;\n"
++        "  g_bone_base = int(d.x);\n"
++        "  int l = int(d.y) * 7;\n"
++        "  light_dir0_fade = texelFetch(lights_tbo, l);\n"
++        "  light_dir1_fade_en = texelFetch(lights_tbo, l + 1);\n"
++        "  light_dir2 = texelFetch(lights_tbo, l + 2).xyz;\n"
++        "  light_col0 = texelFetch(lights_tbo, l + 3);\n"
++        "  light_col1 = texelFetch(lights_tbo, l + 4);\n"
++        "  light_col2 = texelFetch(lights_tbo, l + 5);\n"
++        "  light_ambient = texelFetch(lights_tbo, l + 6);\n"
++        "}\n");
++    vert_src = std::regex_replace(vert_src, std::regex("void main\\(\\) \\{"), "void main() {\n  init_inst();");
++  }
+ 
+   vert_src = std::regex_replace(vert_src, std::regex("HEIGHT_SCALE"), height_scale);
+   vert_src = std::regex_replace(vert_src, std::regex("SCISSOR_HEIGHT"), scissor_height);
+@@ -138,6 +174,7 @@
+   at(ShaderId::SHADOW) = {"shadow", version};
+   at(ShaderId::COLLISION) = {"collision", version};
+   at(ShaderId::MERC2) = {"merc2", version};
++  at(ShaderId::MERC2_INST) = {"merc2_inst", version};  // __ps5__ merc-instancing
+   at(ShaderId::SPRITE_DISTORT) = {"sprite_distort", version};
+   at(ShaderId::SPRITE_DISTORT_INSTANCED) = {"sprite_distort_instanced", version};
+   at(ShaderId::POST_PROCESSING) = {"post_processing", version};
+--- a/game/graphics/opengl_renderer/foreground/Merc2.h
++++ b/game/graphics/opengl_renderer/foreground/Merc2.h
+@@ -1,4 +1,7 @@
+ #pragma once
++#include <unordered_map>
++#include <vector>
++
+ #include "game/graphics/opengl_renderer/BucketRenderer.h"
+ 
+ struct MercDebugStats {
+@@ -232,11 +235,37 @@
+   void do_draws(const Draw* draw_array,
+                 const LevelData* lev,
+                 u32 num_draws,
+-                const Uniforms& uniforms,
++                const Uniforms& uniforms_in,
+                 ScopedProfilerNode& prof,
+                 bool set_fade,
+                 SharedRenderState* render_state);
+ 
++  // __ps5__ merc-instancing: draws with equal geometry/material are issued as one instanced draw; bones, lights and the
++
++  // __ps5__ merc-instancing: draws with equal geometry/material are issued as one instanced draw; bones, lights and the
++  // per-instance (bone, light) pair come from buffer textures (see merc2_inst in Shader.cpp)
++  struct InstRun {
++    u32 start;  // first entry in m_plan
++    u32 len;    // number of instances
++    bool inst;  // drawn with the instanced shader (false: old per-draw path)
++    bool ordered;  // blended or without depth write: only equal neighbours may merge
++  };
++  bool m_inst_ok = false;
++  Uniforms m_inst_uniforms;
++  GLint m_inst_base_loc = -1;
++  GLuint m_bones_tbo = 0, m_inst_buf = 0, m_inst_tbo = 0, m_lights_buf = 0, m_lights_tbo = 0;
++  std::vector<InstRun> m_runs;
++  std::vector<u32> m_plan, m_seg, m_inst_data;
++  std::vector<float> m_light_pack;
++  std::vector<std::vector<u32>> m_groups;
++  std::unordered_map<u64, u32> m_open;
++  void init_instancing(ShaderLibrary& shaders);
++  bool build_inst_plan(const Draw* draw_array, u32 num_draws);
++  void switch_to_inst(SharedRenderState* render_state);
++  bool inst_active();
++  u32 m_inst_poll = 0;
++  bool m_inst_on = true;
++
+   static constexpr int MAX_LIGHTS = 1024;
+   VuLights m_lights_buffer[MAX_LIGHTS];
+   u32 m_next_free_light = 0;
+--- a/game/graphics/opengl_renderer/foreground/Merc2.cpp
++++ b/game/graphics/opengl_renderer/foreground/Merc2.cpp
+@@ -9,6 +9,11 @@
+ 
+ #include "third-party/imgui/imgui.h"
+ 
++#ifdef __ps5__
++#include <sys/stat.h>
++void ps5_log(const char*, ...);
++#endif
++
+ /* Merc 2 renderer:
+  The merc2 renderer is the main "foreground" renderer, which draws characters, collectables,
+  and even some water.
+@@ -100,6 +105,202 @@
+   init_shader_common(shaders[ShaderId::MERC2], &m_merc_uniforms, true);
+   init_shader_common(shaders[ShaderId::EMERC], &m_emerc_uniforms, false);
+   m_emerc_uniforms.fade = glGetUniformLocation(shaders[ShaderId::EMERC].id(), "fade");
++  init_instancing(shaders);  // __ps5__ merc-instancing
++}
++
++// __ps5__ merc-instancing
++void Merc2::init_instancing(ShaderLibrary& shaders) {
++#ifdef __ps5__
++  Shader& sh = shaders[ShaderId::MERC2_INST];
++  if (!sh.okay()) {
++    return;
++  }
++  init_shader_common(sh, &m_inst_uniforms, false);
++  const GLuint id = (GLuint)sh.id();
++  m_inst_base_loc = glGetUniformLocation(id, "inst_base");
++  glUniform1i(glGetUniformLocation(id, "bones_tbo"), 13);
++  glUniform1i(glGetUniformLocation(id, "inst_tbo"), 14);
++  glUniform1i(glGetUniformLocation(id, "lights_tbo"), 15);
++  glGenBuffers(1, &m_inst_buf);
++  glGenBuffers(1, &m_lights_buf);
++  glGenTextures(1, &m_bones_tbo);
++  glGenTextures(1, &m_inst_tbo);
++  glGenTextures(1, &m_lights_tbo);
++  m_inst_ok = m_inst_base_loc >= 0;
++#else
++  (void)shaders;
++#endif
++}
++
++// config/noinstance.txt is polled (about every 10 frames) so instancing can be switched while the game runs
++bool Merc2::inst_active() {
++#ifdef __ps5__
++  if (!m_inst_ok) {
++    return false;
++  }
++  if ((m_inst_poll++ & 63) == 0) {
++    struct stat st;
++    m_inst_on = stat("/data/opengoal/config/noinstance.txt", &st) != 0;
++  }
++  return m_inst_on;
++#else
++  return false;
++#endif
++}
++
++void Merc2::switch_to_inst(SharedRenderState* render_state) {
++  render_state->shaders[ShaderId::MERC2_INST].activate();
++  glUniform4f(m_inst_uniforms.fog_color, render_state->fog_color[0] / 255.f,
++              render_state->fog_color[1] / 255.f, render_state->fog_color[2] / 255.f,
++              render_state->fog_intensity / 255);
++  glUniform1i(m_inst_uniforms.gfx_hack_no_tex, Gfx::g_global_settings.hack_no_tex);
++}
++
++/*!
++ * Orders the draws of one bucket into runs. A run is one instanced draw. Opaque draws with equal geometry and material
++ * (from different models, so with different bones and lights) move together; blended draws and draws without depth
++ * write keep their order and only merge with an equal neighbour. Draws with modified vertices or the two-pass fade
++ * lighting stay on the old path. Returns false when instancing is off.
++ */
++bool Merc2::build_inst_plan(const Draw* da, u32 n) {
++  if (!m_inst_ok || n == 0) {
++    return false;
++  }
++  m_plan.clear();
++  m_runs.clear();
++  m_seg.clear();
++  auto key = [&](const Draw& d) {
++    u64 h = d.first_index;
++    h = h * 0x9E3779B97F4A7C15ull ^ d.index_count;
++    h = h * 0x9E3779B97F4A7C15ull ^ (u32)d.texture;
++    h = h * 0x9E3779B97F4A7C15ull ^ d.mode.as_int();
++    h = h * 0x9E3779B97F4A7C15ull ^ (d.flags | (u32)d.no_strip << 8);
++    h = h * 0x9E3779B97F4A7C15ull ^ d.hash;
++    return h;
++  };
++  auto same = [&](const Draw& a, const Draw& b) {
++    return a.first_index == b.first_index && a.index_count == b.index_count && a.texture == b.texture &&
++           a.mode.as_int() == b.mode.as_int() && a.flags == b.flags && a.no_strip == b.no_strip &&
++           a.hash == b.hash;
++  };
++  auto add_run = [&](u32 di, bool inst, bool ordered) {
++    m_runs.push_back({(u32)m_plan.size(), 1, inst, ordered});
++    m_plan.push_back(di);
++  };
++  auto flush_seg = [&]() {
++    if (m_seg.empty()) {
++      return;
++    }
++    m_open.clear();
++    u32 ngroups = 0;
++    for (u32 di : m_seg) {
++      const u64 k = key(da[di]);
++      bool placed = false;
++      auto it = m_open.find(k);
++      if (it != m_open.end()) {
++        auto& v = m_groups[it->second];
++        if (same(da[v[0]], da[di])) {
++          bool dup = false;  // one instance per skeleton: a model's own draws keep their order
++          for (u32 m : v) {
++            if (da[m].first_bone == da[di].first_bone) {
++              dup = true;
++              break;
++            }
++          }
++          if (!dup) {
++            v.push_back(di);
++            placed = true;
++          }
++        }
++      }
++      if (!placed) {
++        if (ngroups == m_groups.size()) {
++          m_groups.emplace_back();
++        }
++        m_groups[ngroups].clear();
++        m_groups[ngroups].push_back(di);
++        m_open[k] = ngroups++;
++      }
++    }
++    for (u32 g = 0; g < ngroups; g++) {
++      m_runs.push_back({(u32)m_plan.size(), (u32)m_groups[g].size(), true, false});
++      m_plan.insert(m_plan.end(), m_groups[g].begin(), m_groups[g].end());
++    }
++    m_seg.clear();
++  };
++  for (u32 i = 0; i < n; i++) {
++    const Draw& x = da[i];
++    if ((x.flags & MOD_VTX) || m_lights_buffer[x.light_idx].w1) {
++      flush_seg();
++      add_run(i, false, true);
++    } else if (x.mode.get_ab_enable() || !x.mode.get_depth_write_enable()) {
++      flush_seg();
++      if (!m_runs.empty()) {
++        auto& r = m_runs.back();
++        if (r.inst && r.ordered && r.start + r.len == m_plan.size() && same(da[m_plan[r.start]], x)) {
++          r.len++;
++          m_plan.push_back(i);
++          continue;
++        }
++      }
++      add_run(i, true, true);
++    } else {
++      m_seg.push_back(i);
++    }
++  }
++  flush_seg();
++
++  {
++    static u64 st_calls = 0, st_draws = 0, st_runs = 0, st_inst = 0, st_old = 0;
++    st_calls++;
++    st_draws += n;
++    st_runs += m_runs.size();
++    for (const auto& r : m_runs) {
++      (r.inst ? st_inst : st_old) += 1;
++    }
++    if (st_calls == 600) {
++      ps5_log("merc-inst: per 600 flushes draws=%llu runs=%llu (instanced runs %llu, old-path draws %llu)",
++              (unsigned long long)st_draws, (unsigned long long)st_runs, (unsigned long long)st_inst,
++              (unsigned long long)st_old);
++      st_calls = st_draws = st_runs = st_inst = st_old = 0;
++    }
++  }
++  m_inst_data.resize(m_plan.size() * 2);
++  for (size_t k = 0; k < m_plan.size(); k++) {
++    m_inst_data[k * 2] = da[m_plan[k]].first_bone;
++    m_inst_data[k * 2 + 1] = da[m_plan[k]].light_idx;
++  }
++  m_light_pack.resize((size_t)m_next_free_light * 28);
++  for (u32 l = 0; l < m_next_free_light; l++) {
++    const auto& L = m_lights_buffer[l];
++    float* o = &m_light_pack[(size_t)l * 28];
++    const float v[28] = {L.direction0.x(), L.direction0.y(), L.direction0.z(), 1.f,
++                         L.direction1.x(), L.direction1.y(), L.direction1.z(), 0.f,
++                         L.direction2.x(), L.direction2.y(), L.direction2.z(), 0.f,
++                         L.color0.x(), L.color0.y(), L.color0.z(), L.color0.w(),
++                         L.color1.x(), L.color1.y(), L.color1.z(), L.color1.w(),
++                         L.color2.x(), L.color2.y(), L.color2.z(), L.color2.w(),
++                         L.ambient.x(), L.ambient.y(), L.ambient.z(), L.ambient.w()};
++    memcpy(o, v, sizeof(v));
++  }
++  glBindBuffer(GL_UNIFORM_BUFFER, m_inst_buf);
++  glBufferData(GL_UNIFORM_BUFFER, m_inst_data.size() * 4, m_inst_data.data(), GL_STREAM_DRAW);
++  glBindBuffer(GL_UNIFORM_BUFFER, m_lights_buf);
++  glBufferData(GL_UNIFORM_BUFFER, std::max<size_t>(m_light_pack.size() * 4, 16), m_light_pack.data(),
++               GL_STREAM_DRAW);
++  glBindBuffer(GL_UNIFORM_BUFFER, 0);
++  // texture buffers resolve the buffer storage when attached: attach again after every upload
++  glActiveTexture(GL_TEXTURE0 + 13);
++  glBindTexture(GL_TEXTURE_BUFFER, m_bones_tbo);
++  glTexBuffer(GL_TEXTURE_BUFFER, GL_RGBA32F, m_bones_buffer);
++  glActiveTexture(GL_TEXTURE0 + 14);
++  glBindTexture(GL_TEXTURE_BUFFER, m_inst_tbo);
++  glTexBuffer(GL_TEXTURE_BUFFER, GL_RG32UI, m_inst_buf);
++  glActiveTexture(GL_TEXTURE0 + 15);
++  glBindTexture(GL_TEXTURE_BUFFER, m_lights_tbo);
++  glTexBuffer(GL_TEXTURE_BUFFER, GL_RGBA32F, m_lights_buf);
++  glActiveTexture(GL_TEXTURE0);
++  return true;
+ }
+ 
+ Merc2::~Merc2() {
+@@ -912,6 +1113,13 @@
+   set_uniform(m_emerc_uniforms.fog, m_low_memory.fog);
+   glUniformMatrix4fv(m_emerc_uniforms.perspective_matrix, 1, GL_FALSE,
+                      &m_low_memory.perspective[0].x());
++  if (m_inst_ok) {  // __ps5__ merc-instancing
++    switch_to_inst(render_state);
++    set_uniform(m_inst_uniforms.hvdf_offset, m_low_memory.hvdf_offset);
++    set_uniform(m_inst_uniforms.fog, m_low_memory.fog);
++    glUniformMatrix4fv(m_inst_uniforms.perspective_matrix, 1, GL_FALSE,
++                       &m_low_memory.perspective[0].x());
++  }
+ 
+   // 1 qw with another 4 vifcodes.
+   u32 vifcode_final_data[4];
+@@ -1216,7 +1424,7 @@
+ void Merc2::do_draws(const Draw* draw_array,
+                      const LevelData* lev,
+                      u32 num_draws,
+-                     const Uniforms& uniforms,
++                     const Uniforms& uniforms_in,
+                      ScopedProfilerNode& prof,
+                      bool set_fade,
+                      SharedRenderState* render_state) {
+@@ -1227,7 +1435,25 @@
+ 
+   bool fog_on = true;
+ 
+-  for (u32 di = 0; di < num_draws; di++) {
++  // __ps5__ merc-instancing
++  const bool use_inst = !set_fade && inst_active() && build_inst_plan(draw_array, num_draws);
++  bool cur_inst = false;
++  const u32 num_runs = use_inst ? (u32)m_runs.size() : num_draws;
++
++  for (u32 ri = 0; ri < num_runs; ri++) {
++    const bool inst_run = use_inst && m_runs[ri].inst;
++    const Uniforms& uniforms = inst_run ? m_inst_uniforms : uniforms_in;
++    if (use_inst && inst_run != cur_inst) {
++      if (inst_run) {
++        switch_to_inst(render_state);
++      } else {
++        switch_to_merc2(render_state);
++      }
++      cur_inst = inst_run;
++      fog_on = true;
++      last_light = -1;
++    }
++    const u32 di = use_inst ? m_plan[m_runs[ri].start] : ri;
+     auto& draw = draw_array[di];
+     if (draw.flags & MOD_VTX) {
+       glBindVertexArray(draw.mod_vtx_buffer.vao);
+@@ -1284,7 +1510,7 @@
+       last_tex = draw.texture;
+     }
+ 
+-    if ((int)draw.light_idx != last_light && !set_fade) {
++    if ((int)draw.light_idx != last_light && !set_fade && !inst_run) {
+       const auto& l0_dir = m_lights_buffer[draw.light_idx].direction0;
+       const auto& l1_dir = m_lights_buffer[draw.light_idx].direction1;
+       float fade = 1.f;
+@@ -1315,7 +1541,7 @@
+       ASSERT(draw.mode.get_alpha_blend() == DrawMode::AlphaBlend::SRC_0_DST_DST);
+     }
+ 
+-    if (m_lights_buffer[draw.light_idx].w1 && !set_fade) {
++    if (m_lights_buffer[draw.light_idx].w1 && !set_fade && !inst_run) {
+       DrawMode mode = draw.mode;
+       mode.set_alpha_blend(DrawMode::AlphaBlend::SRC_DST_SRC_DST);
+       mode.set_ab(true);
+@@ -1341,6 +1567,14 @@
+                      GL_UNSIGNED_INT, (void*)(sizeof(u32) * draw.first_index));
+       glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+ 
++    } else if (inst_run) {  // __ps5__ merc-instancing
++      setup_opengl_from_draw_mode(draw.mode, GL_TEXTURE0, use_mipmaps_for_filtering);
++      const auto& run = m_runs[ri];
++      prof.add_draw_call();
++      prof.add_tri(draw.num_triangles * run.len);
++      glUniform1i(m_inst_base_loc, (GLint)run.start);
++      glDrawElementsInstanced(draw.no_strip ? GL_TRIANGLES : GL_TRIANGLE_STRIP, draw.index_count,
++                              GL_UNSIGNED_INT, (void*)(sizeof(u32) * draw.first_index), run.len);
+     } else {
+       setup_opengl_from_draw_mode(draw.mode, GL_TEXTURE0, use_mipmaps_for_filtering);
+       prof.add_draw_call();
+@@ -1352,6 +1586,10 @@
+     }
+   }
+ 
++  if (cur_inst) {  // __ps5__ merc-instancing
++    switch_to_merc2(render_state);
++  }
++
+   if (!normal_vtx_buffer_bound) {
+     glBindVertexArray(m_vao);
+     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lev->merc_indices);

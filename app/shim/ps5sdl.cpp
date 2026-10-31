@@ -594,6 +594,7 @@ extern "C" int ps5_driver_blit_report(char*, size_t);
 extern "C" int ps5_driver_mip_report(char*, size_t);
 extern "C" void ps5_driver_backpressure_stats(unsigned long long*, unsigned long long*, unsigned long long*, unsigned long long*);
 extern "C" void ps5_glfix_frame_end(double);
+extern "C" void ps5_insttest_tick(void* (*)(const char*));
 extern "C" int ps5_driver_clear_report(char*, size_t);
 extern "C" void ps5_driver_scanout_reasons(unsigned long long*, unsigned long long*, unsigned long long*, unsigned long long*);
 extern "C" void ps5_loading_overlay(int w, int h);
@@ -669,6 +670,7 @@ bool SDL_GL_SwapWindow(SDL_Window*) {
       l_bdc = bdc; l_bdb = bdb; l_bsc = bsc; l_bsb = bsb; l_dc = dc;
     }
     ps5_glfix_frame_end(iv / 1e6);
+    ps5_insttest_tick(reinterpret_cast<void* (*)(const char*)>(SDL_GL_GetProcAddress));
     if (iv > max_interval) max_interval = iv;
     if (iv > 20000000ull) ++slow20;
     if (iv > 33500000ull) ++slow33;
@@ -775,6 +777,7 @@ bool SDL_GL_SwapWindow(SDL_Window*) {
       ps5_log("thread time per frame: user %.1f ms, system %.1f ms, nvcsw %ld nivcsw %ld", (u - last_u) / frames, (sy - last_s) / frames, ru.ru_nvcsw, ru.ru_nivcsw);
       last_u = u; last_s = sy;
     }
+    if (getrusage(0 /*RUSAGE_SELF*/, &ru) == 0) ps5_log("memory: max rss %ld MB", ru.ru_maxrss / 1024);
     ps5_log("frametime: max %.1f ms, frames over 20 ms: %d, over 33 ms: %d (of %d)", max_interval / 1e6, slow20, slow33, frames);
     max_interval = 0; slow20 = slow33 = 0;
     frames = 0;

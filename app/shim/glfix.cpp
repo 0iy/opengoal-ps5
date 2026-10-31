@@ -54,6 +54,7 @@ struct Real {
   void (*DrawElements)(GLenum, GLsizei, GLenum, const void*) = nullptr;
 void (*DrawRangeElements)(GLenum, GLuint, GLuint, GLsizei, GLenum, const void*) = nullptr;
   void (*MultiDrawElements)(GLenum, const GLsizei*, GLenum, const void* const*, GLsizei) = nullptr;
+  void (*DrawElementsInstanced)(GLenum, GLsizei, GLenum, const void*, GLsizei) = nullptr;
   void (*DrawElementsBaseVertex)(GLenum, GLsizei, GLenum, const void*, GLint) = nullptr;
   void (*VertexAttribIPointer)(GLuint, GLint, GLenum, GLsizei, const void*) = nullptr;
   void (*DrawArrays)(GLenum, GLint, GLsizei) = nullptr;
@@ -78,6 +79,7 @@ void load_real() {
   LOAD(DrawElements);
 LOAD(DrawRangeElements);
   LOAD(MultiDrawElements);
+  LOAD(DrawElementsInstanced);
   LOAD(DrawElementsBaseVertex);
   LOAD(VertexAttribPointer);
   LOAD(BindFramebuffer);
@@ -198,22 +200,36 @@ uint64_t now_ns() {
   return uint64_t(ts.tv_sec) * 1000000000ull + uint64_t(ts.tv_nsec);
 }
 
-GLuint current_ebo() {
-  auto it = S.ebo_of_vao.find(S.vao);
-  return it == S.ebo_of_vao.end() ? 0 : it->second;
+std::vector<uint32_t> g_ebo_gen;  // per element buffer id: bumped when its contents or converted lists change
+inline uint32_t& ebo_gen(GLuint ebo) {
+  if (ebo >= g_ebo_gen.size()) g_ebo_gen.resize(size_t(ebo) + 1024, 1u);
+  return g_ebo_gen[ebo];
 }
+GLuint g_cur_ebo = 0;  // element buffer of the bound VAO, kept in step with S.vao / S.ebo_of_vao
+void refresh_cur_ebo() {
+  auto it = S.ebo_of_vao.find(S.vao);
+  g_cur_ebo = it == S.ebo_of_vao.end() ? 0 : it->second;
+}
+inline GLuint current_ebo() { return g_cur_ebo; }
 
 uint64_t key_of(GLuint buf, GLenum mode) { return (uint64_t(buf) << 3) | (mode == kTriangleFan ? 2u : 1u); }
 
-void invalidate(GLuint buf, size_t first_changed_index) {
+void invalidate(GLuint buf, size_t first_changed_index, size_t end_changed_index = SIZE_MAX) {
+  ++ebo_gen(buf);
   for (GLenum mode : {kTriangleStrip, kTriangleFan}) {
     auto it = S.converted.find(key_of(buf, mode));
     if (it != S.converted.end() && first_changed_index < it->second.done) it->second.reset();
     auto rc = S.range_cache.find(key_of(buf, mode));
-    if (rc != S.range_cache.end()) {
-      rc->second.c.reset();
-      rc->second.ranges.clear();
+    if (rc == S.range_cache.end()) continue;
+    // drop only ranges that read changed indices (streaming updates parts of big buffers); the range also
+    // depends on the index before it (restart check), so it counts as overlapping one earlier
+    auto& ranges = rc->second.ranges;
+    for (auto r = ranges.begin(); r != ranges.end();) {
+      const size_t first = r->first >> 32, end = first + uint32_t(r->first);
+      if (first <= end_changed_index && end > first_changed_index) r = ranges.erase(r); else ++r;
     }
+    // erased ranges leave dead indices in c.out; without this a partly streamed buffer grows without limit
+    if (ranges.empty() || rc->second.c.out.size() > (4u << 20)) { ranges.clear(); rc->second.c.reset(); }
   }
 }
 
@@ -337,7 +353,9 @@ bool resolve(GLenum mode, GLsizei count, const void* offset_ptr, GLuint* out_buf
     return true;
   }
   Converted& c = S.converted[key_of(ebo, mode)];
-  if (first + size_t(count) > c.done || c.map.empty()) convert_until(c, sh->second.data, first + size_t(count), mode == kTriangleFan);
+  // convert the whole buffer at once: every growing append made the driver copy and flush the full converted buffer
+  // (buffer rename), gigabytes per second while levels stream in
+  if (first + size_t(count) > c.done || c.map.empty()) convert_until(c, sh->second.data, sh->second.data.size(), mode == kTriangleFan);
   upload(c);
   *out_buf = c.gl_buffer;
   *out_first = static_cast<GLsizei>(c.map[first]);
@@ -420,6 +438,8 @@ struct DrawTimer {
   ~DrawTimer() { if (!on) return; const uint64_t t1 = tsc(); g_draw_cycles += t1 - t0; ++g_draw_calls; note_event(t0, t1, w0); trace_emit(10, t0, t1 - t0, g_ev_idx); }
 };
 
+uint64_t g_dc_hits = 0, g_dc_misses = 0;  // draw front cache counters (w_DrawElements)
+
 void report() {
   const uint64_t t = now_ns();
   if (t - S.last_report_ns < 10000000000ull) return;
@@ -445,9 +465,16 @@ void report() {
     }
     g_rep_tsc = nt; g_rep_ns = nn; g_bd_cycles = 0; g_bd_calls = g_bd_bytes = g_bsd_calls = g_bsd_bytes = 0; g_draw_cycles = 0; g_draw_calls = 0;
   }
+  ps5_log("glfix: draw cache hits=%llu misses=%llu", (unsigned long long)g_dc_hits, (unsigned long long)g_dc_misses);
   ps5_log("glfix: draws converted=%llu passthrough=%llu, indices converted=%llu, buffers=%zu",
           (unsigned long long)S.draws_converted, (unsigned long long)S.draws_passthrough,
           (unsigned long long)S.indices_converted, S.converted.size());
+  size_t sh = 0, cv = 0, rcb = 0, gpu = 0;
+  for (auto& kv : S.shadows) sh += kv.second.data.capacity();
+  for (auto& kv : S.converted) cv += kv.second.out.capacity() + kv.second.map.capacity(), gpu += kv.second.gl_capacity;
+  for (auto& kv : S.range_cache) rcb += kv.second.c.out.capacity() + kv.second.ranges.size() * 4, gpu += kv.second.c.gl_capacity;
+  ps5_log("glfix: memory KB shadows=%zu converted=%zu ranges=%zu (%zu caches) gl=%zu", sh / 256, cv / 256, rcb / 256,
+          S.range_cache.size(), gpu / 256);
 }
 
 // ---- wrappers ------------------------------------------------------------------------------------------
@@ -470,11 +497,13 @@ void w_BindVertexArray(GLuint vao) {
   load_real();
   restore_ebo();
   S.vao = vao;
+  refresh_cur_ebo();
   R.BindVertexArray(vao);
 }
 void w_DeleteVertexArrays(GLsizei n, const GLuint* vaos) {
   load_real();
   for (GLsizei i = 0; i < n; ++i) S.ebo_of_vao.erase(vaos[i]);
+  refresh_cur_ebo();
   R.DeleteVertexArrays(n, vaos);
 }
 void w_BindBuffer(GLenum target, GLuint buf) {
@@ -483,6 +512,7 @@ void w_BindBuffer(GLenum target, GLuint buf) {
   if (target == kElementArrayBuffer) restore_ebo();
   if (target == kElementArrayBuffer) {
     S.ebo_of_vao[S.vao] = buf;
+    g_cur_ebo = buf;
     if (buf && S.shadows.find(buf) == S.shadows.end()) S.shadows.emplace(buf, Shadow{});
   }
   R.BindBuffer(target, buf);
@@ -509,7 +539,7 @@ void w_BufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void
   if (target == kArrayBuffer && S.array_bound && S.shadows.count(S.array_bound)) {  // index data uploaded via ARRAY target
     Shadow& sh = S.shadows[S.array_bound];
     if (data && offset >= 0 && (offset & 3) == 0 && size_t(offset) + size_t(size) <= sh.data.size() * 4) std::memcpy(sh.data.data() + offset / 4, data, size_t(size) / 4 * 4);
-    invalidate(S.array_bound, size_t(offset) / 4);
+    invalidate(S.array_bound, size_t(offset) / 4, size_t(offset + size + 3) / 4);
   }
   if (target == kElementArrayBuffer) restore_ebo();
   if (target == kElementArrayBuffer) {
@@ -518,8 +548,8 @@ void w_BufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void
       Shadow& sh = S.shadows[ebo];
       const size_t end = size_t(offset + size) / 4;
       if (sh.data.size() < end) sh.data.resize(end, 0u);
-      std::memcpy(reinterpret_cast<uint8_t*>(sh.data.data()) + offset, data, size_t(size));
-      invalidate(ebo, size_t(offset) / 4);
+      if (data) std::memcpy(reinterpret_cast<uint8_t*>(sh.data.data()) + offset, data, size_t(size));
+      invalidate(ebo, size_t(offset) / 4, size_t(offset + size + 3) / 4);
     }
   }
   R.BufferSubData(target, offset, size, data);
@@ -529,6 +559,7 @@ void w_DeleteBuffers(GLsizei n, const GLuint* bufs) {
   restore_ebo();
   for (GLsizei i = 0; i < n; ++i) {
     S.shadows.erase(bufs[i]);
+    ++ebo_gen(bufs[i]);
     for (GLenum mode : {kTriangleStrip, kTriangleFan}) {
       auto rc = S.range_cache.find(key_of(bufs[i], mode));
       if (rc != S.range_cache.end()) {
@@ -712,6 +743,28 @@ bool merge_gather(MergeState* m, const std::vector<GLsizei>& cnt, const std::vec
   return true;
 }
 
+void issue_converted(GLuint buf, GLsizei first, GLsizei n, uint32_t lo, uint32_t hi) {
+  bind_hw_ebo(buf);
+  // converted lists hold no restart index: switching restart off keeps the driver from scanning them
+  hw_restart(false);
+  if (lo <= hi && R.DrawRangeElements) rt_real(R.DrawRangeElements, kTriangles, lo, hi, n, kUnsignedInt, reinterpret_cast<const void*>(uintptr_t(first) * 4));
+  else rt_real(R.DrawElements, kTriangles, n, kUnsignedInt, reinterpret_cast<const void*>(uintptr_t(first) * 4));
+}
+// Front cache for single draws: the same (buffer, mode, offset, count) comes back many times per frame (every merc model
+// effect, every sprite batch). A hit skips resolve() and the bounds lookup; entries die with the buffer's ebo_gen, which every
+// change of the index buffer's contents, every rebuild of its converted lists and its delete bumps.
+struct DrawCache { GLuint ebo; GLenum mode; GLsizei count; uintptr_t off; uint32_t gen; GLuint buf; GLsizei first, n; uint32_t lo, hi; };
+DrawCache g_dc[4096];
+bool dc_off() {  // nodrawcache.txt: A/B switch for measurements
+  static int v = -1;
+  if (v < 0) { struct stat st; v = stat("/data/opengoal/config/nodrawcache.txt", &st) == 0; }
+  return v == 1;
+}
+inline size_t dc_slot(GLuint ebo, GLenum mode, GLsizei count, uintptr_t off) {
+  uint64_t h = (uint64_t(ebo) * 0x9E3779B97F4A7C15ull) ^ (uint64_t(off >> 2) * 0xC2B2AE3D27D4EB4Full) ^ (uint64_t(uint32_t(count)) * 0x165667B19E3779F9ull) ^ mode;
+  return size_t(h >> 52) & 4095;
+}
+
 void w_DrawElements(GLenum mode, GLsizei count, GLenum type, const void* indices) {
   DrawTimer draw_timer;
   load_real();
@@ -720,14 +773,23 @@ void w_DrawElements(GLenum mode, GLsizei count, GLenum type, const void* indices
   note_last_draw("elements", mode, 0);
   GLuint buf = 0;
   GLsizei first = 0, n = 0;
-  if (type == kUnsignedInt && resolve(mode, count, indices, &buf, &first, &n)) {
+  DrawCache* hit = nullptr;
+  if (type == kUnsignedInt && S.restart_enabled && S.restart_index == kRestart && (mode == kTriangleStrip || mode == kTriangleFan)) {
+    DrawCache& e = g_dc[dc_slot(g_cur_ebo, mode, count, reinterpret_cast<uintptr_t>(indices))];
+    if (e.gen == ebo_gen(g_cur_ebo) && e.ebo == g_cur_ebo && e.mode == mode && e.count == count && e.off == reinterpret_cast<uintptr_t>(indices) &&
+        !glfix_disabled() && !dc_off()) {
+      hit = &e;
+      buf = e.buf; first = e.first; n = e.n;
+    }
+  }
+  if (hit || (type == kUnsignedInt && resolve(mode, count, indices, &buf, &first, &n))) {
     ++S.draws_converted;
     hist(3, mode, type, S.restart_enabled);
     if (MergeState* ms_ = mg()) { if (ms_->stats) ms_single(ms_, n > 0 ? buf : 0, first, n); }
-    if (n > 0) {
-      bind_hw_ebo(buf);
-      // converted lists hold no restart index: switching restart off keeps the driver from scanning them
-      hw_restart(false);
+    if (hit) {
+      ++g_dc_hits;
+      if (n > 0) issue_converted(buf, first, n, hit->lo, hit->hi);
+    } else if (n > 0) {
       // The driver scans every indexed draw for its min/max index on the CPU; the converted lists are static,
       // so compute the bounds once per (buffer, range) and hand them over with DrawRangeElements.
       struct MM { uint64_t gen; uint32_t lo, hi; };
@@ -741,11 +803,14 @@ void w_DrawElements(GLenum mode, GLsizei count, GLenum type, const void* indices
         }
         mit = mm_cache.insert_or_assign(key, MM{g_mm_gen, lo, hi}).first;
       }
-      if (mit->second.lo <= mit->second.hi && R.DrawRangeElements) rt_real(R.DrawRangeElements, kTriangles, mit->second.lo, mit->second.hi, n, kUnsignedInt, reinterpret_cast<const void*>(uintptr_t(first) * 4));
-      else rt_real(R.DrawElements, kTriangles, n, kUnsignedInt, reinterpret_cast<const void*>(uintptr_t(first) * 4));
+      issue_converted(buf, first, n, mit->second.lo, mit->second.hi);
+      ++g_dc_misses;
+      if (type == kUnsignedInt && S.restart_enabled && S.restart_index == kRestart && (mode == kTriangleStrip || mode == kTriangleFan))
+        g_dc[dc_slot(g_cur_ebo, mode, count, reinterpret_cast<uintptr_t>(indices))] =
+            {g_cur_ebo, mode, count, reinterpret_cast<uintptr_t>(indices), ebo_gen(g_cur_ebo), buf, first, n, mit->second.lo, mit->second.hi};
     }
   } else {
-    ++S.draws_passthrough;
+      ++S.draws_passthrough;
     hist(2, mode, type, S.restart_enabled);
     if (MergeState* ms_ = mg()) { if (ms_->stats) ms_other(ms_); }
     // plain triangle lists never use primitive restart; the driver otherwise lowers them on the CPU
@@ -756,6 +821,34 @@ void w_DrawElements(GLenum mode, GLsizei count, GLenum type, const void* indices
   report();
 }
 
+// Instanced draw (merc instancing): the same strip-to-list conversion as w_DrawElements, issued once for all instances.
+void w_DrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void* indices, GLsizei instances) {
+  DrawTimer draw_timer;
+  load_real();
+  if (over_limit()) return;
+  g_note_in = count; g_note_out = 0; g_note_subs = 1;
+  note_last_draw("instanced", mode, 0);
+  GLuint buf = 0;
+  GLsizei first = 0, n = 0;
+  if (type == kUnsignedInt && resolve(mode, count, indices, &buf, &first, &n)) {
+    ++S.draws_converted;
+    if (n > 0) {
+      bind_hw_ebo(buf);
+      hw_restart(false);
+      rt_real(R.DrawElementsInstanced, kTriangles, n, kUnsignedInt, reinterpret_cast<const void*>(uintptr_t(first) * 4), instances);
+    }
+  } else {
+    ++S.draws_passthrough;
+    restore_ebo();
+    hw_restart(S.restart_enabled && mode != kTriangles);
+    rt_real(R.DrawElementsInstanced, mode, count, type, indices, instances);
+  }
+  report();
+}
+
+std::vector<GLsizei> out_counts;          // converted ranges of the pending multi-draw segment
+std::vector<const void*> out_offsets;
+void flush_multi(GLenum mode, GLuint buf, const GLsizei* counts, const void* const* indices, GLsizei drawcount);
 void w_MultiDrawElements(GLenum mode, const GLsizei* counts, GLenum type, const void* const* indices, GLsizei drawcount) {
   DrawTimer draw_timer;
   load_real();
@@ -763,26 +856,58 @@ void w_MultiDrawElements(GLenum mode, const GLsizei* counts, GLenum type, const 
   g_note_in = 0; g_note_out = 0; g_note_subs = drawcount;
   for (GLsizei d = 0; d < drawcount; ++d) g_note_in += counts[d];
   note_last_draw("multi", mode, 0);
-  static std::vector<GLsizei> out_counts;
-  static std::vector<const void*> out_offsets;
   out_counts.clear();
   out_offsets.clear();
+  if (type != kUnsignedInt) {
+    S.draws_passthrough += drawcount;
+    restore_ebo();
+    hw_restart(S.restart_enabled && mode != kTriangles);
+    rt_real(R.MultiDrawElements, mode, counts, type, indices, drawcount);
+    report();
+    return;
+  }
+  // Sub-draws that cannot be converted (or live in another converted buffer) are drawn on their own, in
+  // order, instead of sending the whole call down the driver's slow strip path.
+  GLsizei seg = 0;  // first sub-draw of the pending converted segment
   GLuint buf = 0;
-  bool ok = type == kUnsignedInt;
-  for (GLsizei d = 0; ok && d < drawcount; ++d) {
+  for (GLsizei d = 0; d <= drawcount; ++d) {
     GLuint b = 0;
     GLsizei first = 0, n = 0;
-    if (!resolve(mode, counts[d], indices[d], &b, &first, &n) || (buf && b != buf)) {
-      ok = false;
-      break;
+    const bool ok = d < drawcount && resolve(mode, counts[d], indices[d], &b, &first, &n);
+    if (ok && (!buf || b == buf)) {
+      buf = b;
+      if (n > 0) {
+        out_counts.push_back(n);
+        out_offsets.push_back(reinterpret_cast<const void*>(uintptr_t(first) * 4));
+      }
+      continue;
     }
-    buf = b;
-    if (n > 0) {
-      out_counts.push_back(n);
-      out_offsets.push_back(reinterpret_cast<const void*>(uintptr_t(first) * 4));
+    if (d > seg) flush_multi(mode, buf, counts + seg, indices + seg, d - seg);
+    out_counts.clear();
+    out_offsets.clear();
+    buf = 0;
+    seg = d;
+    if (d == drawcount) break;
+    if (ok) {  // converted, but in another buffer: starts the next segment
+      buf = b;
+      if (n > 0) {
+        out_counts.push_back(n);
+        out_offsets.push_back(reinterpret_cast<const void*>(uintptr_t(first) * 4));
+      }
+      continue;
     }
+    ++S.draws_passthrough;
+    restore_ebo();  // an earlier range may have bound a converted buffer
+    hw_restart(S.restart_enabled && mode != kTriangles);
+    rt_real(R.DrawElements, mode, counts[d], type, indices[d]);
+    seg = d + 1;
   }
-  if (ok) {
+  report();
+}
+
+// Draws the converted ranges gathered in out_counts/out_offsets (sub-draws counts/indices of the source call).
+void flush_multi(GLenum mode, GLuint buf, const GLsizei* counts, const void* const* indices, GLsizei drawcount) {
+  {
     S.draws_converted += drawcount;
     g_md_in += out_counts.size();
     MergeState* mst_ = mg();
@@ -813,13 +938,7 @@ void w_MultiDrawElements(GLenum mode, const GLsizei* counts, GLenum type, const 
       rt_real(R.MultiDrawElements, kTriangles, out_counts.data(), kUnsignedInt, out_offsets.data(),
                           static_cast<GLsizei>(out_counts.size()));
     }
-  } else {
-    S.draws_passthrough += drawcount;
-    restore_ebo();  // an earlier range may have bound a converted buffer
-    hw_restart(S.restart_enabled && mode != kTriangles);
-    rt_real(R.MultiDrawElements, mode, counts, type, indices, drawcount);
   }
-  report();
 }
 
 // Remembers the first off-screen framebuffer bound after each swap: that is the game's main render target
@@ -1047,6 +1166,33 @@ void w_glCopyTexSubImage2D(GLenum a, GLint b, GLint c, GLint d, GLint e, GLint f
   GlCallTimer timer(13);
   real(a, b, c, d, e, f, g, h);
 }
+// The renderers look uniforms up by name on every flush/draw; the driver's lookup is slow, so cache it per
+// (program, name). Locations only change when a program is relinked or deleted.
+std::unordered_map<uint64_t, GLint> g_uniform_loc;
+void w_glGetUniformLocation_reset() { g_uniform_loc.clear(); }
+GLint w_glGetUniformLocation(GLuint prog, const char* name) {
+  using Fn = GLint (*)(GLuint, const char*);
+  static Fn real = reinterpret_cast<Fn>(const_cast<void*>(ps5_gl_lookup("glGetUniformLocation")));
+  uint64_t h = 1469598103934665603ull;  // FNV-1a of the name
+  for (const char* p = name; *p; ++p) h = (h ^ uint8_t(*p)) * 1099511628211ull;
+  const uint64_t key = h ^ (uint64_t(prog) * 0x9E3779B97F4A7C15ull);
+  auto it = g_uniform_loc.find(key);
+  if (it != g_uniform_loc.end()) return it->second;
+  const GLint loc = real(prog, name);
+  g_uniform_loc.emplace(key, loc);
+  return loc;
+}
+void w_glLinkProgram(GLuint prog) {
+  static auto real = reinterpret_cast<void (*)(GLuint)>(const_cast<void*>(ps5_gl_lookup("glLinkProgram")));
+  w_glGetUniformLocation_reset();
+  real(prog);
+}
+void w_glDeleteProgram(GLuint prog) {
+  static auto real = reinterpret_cast<void (*)(GLuint)>(const_cast<void*>(ps5_gl_lookup("glDeleteProgram")));
+  w_glGetUniformLocation_reset();
+  real(prog);
+}
+
 void report_glcalls(double interval_ms) {
   GlCallStat e[14];
   std::memcpy(e, g_glcalls, sizeof e);
@@ -1081,6 +1227,7 @@ const Entry kWrappers[] = {
     {"glVertexAttribIPointer", reinterpret_cast<void*>(&w_VertexAttribIPointer)},
     {"glVertexAttribPointer", reinterpret_cast<void*>(&w_VertexAttribPointer)},
     {"glMultiDrawElements", reinterpret_cast<void*>(&w_MultiDrawElements)},
+    {"glDrawElementsInstanced", reinterpret_cast<void*>(&w_DrawElementsInstanced)},
     {"glTexImage2D", reinterpret_cast<void*>(&w_glTexImage2D)},
     {"glTexSubImage2D", reinterpret_cast<void*>(&w_glTexSubImage2D)},
     {"glTexImage1D", reinterpret_cast<void*>(&w_glTexImage1D)},
@@ -1095,6 +1242,9 @@ const Entry kWrappers[] = {
     {"glMapBufferRange", reinterpret_cast<void*>(&w_glMapBufferRange)},
     {"glUnmapBuffer", reinterpret_cast<void*>(&w_glUnmapBuffer)},
     {"glCopyTexSubImage2D", reinterpret_cast<void*>(&w_glCopyTexSubImage2D)},
+    {"glGetUniformLocation", reinterpret_cast<void*>(&w_glGetUniformLocation)},
+    {"glLinkProgram", reinterpret_cast<void*>(&w_glLinkProgram)},
+    {"glDeleteProgram", reinterpret_cast<void*>(&w_glDeleteProgram)},
 };
 
 }  // namespace

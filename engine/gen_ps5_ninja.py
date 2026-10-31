@@ -55,6 +55,7 @@ SHIM_SOURCES = [
     "ps5diag.cpp",
     "gl_table.c",
     "glfix.cpp",
+    "insttest.cpp",
     "launcher.cpp",
     "launcher_assets.cpp",
     "importer.cpp",

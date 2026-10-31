@@ -384,6 +384,16 @@ std::string read_token(const std::string& path) {
 
 // Capabilities, the app version (the VERSION file of the release, uploaded with the app) and the data format of every installed game
 // (.format next to the game's data; a game installed before the file existed is format 1). The PC setup decides on updates from these.
+// access() is not reliable on the console (it failed for folders the app writes fine), so test with a real create and unlink
+static bool can_write(const char* dir) {
+  const std::string f = std::string(dir) + "/.og_write_test";
+  const int fd = open(f.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+  if (fd < 0) return false;
+  close(fd);
+  unlink(f.c_str());
+  return true;
+}
+
 std::string info_json() {
   std::string fm;
   for (int i = 0; i < 3; ++i) {
@@ -391,8 +401,14 @@ std::string info_json() {
     const std::string f = read_token(std::string("/data/opengoal/") + kIds[i] + "/data/.format");
     fm += std::string(fm.empty() ? "" : ",") + "\"" + kIds[i] + "\":" + (f.empty() ? "1" : f);
   }
+  // folders the app must be able to write, checked as the app's own user: the setup repairs them when one is listed (#5)
+  std::string bad;
+  for (const char* d : {"/data/opengoal", "/data/opengoal/log", "/data/opengoal/config", "/data/opengoal/config/OpenGOAL", "/data/opengoal/jak1",
+                        "/data/opengoal/jak2", "/data/opengoal/jak3", "/data/opengoal/config/OpenGOAL/jak1", "/data/opengoal/config/OpenGOAL/jak2",
+                        "/data/opengoal/config/OpenGOAL/jak3"})
+    if (!can_write(d)) bad += std::string(bad.empty() ? "" : ",") + "\"" + d + "\"";
   return "{\"install_api\":1,\"max_frame\":16777216,\"codecs\":[\"raw\",\"deflate\"],\"busy\":" + std::string(g_installing.load() ? "true" : "false") +
-         ",\"app\":\"" + read_token("/data/homebrew/LAPY77001/VERSION") + "\",\"formats\":{" + fm + "}}";
+         ",\"app\":\"" + read_token("/data/homebrew/LAPY77001/VERSION") + "\",\"formats\":{" + fm + "},\"unwritable\":[" + bad + "]}";
 }
 
 // Answers, then swallows what the client is still sending (up to 64 MB / 1 s of silence) so the close does not turn into a TCP

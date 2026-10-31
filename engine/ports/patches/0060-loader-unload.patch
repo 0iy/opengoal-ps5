@@ -1,0 +1,17 @@
+--- a/game/graphics/opengl_renderer/loader/Loader.cpp
++++ b/game/graphics/opengl_renderer/loader/Loader.cpp
+@@ -531,7 +531,14 @@
+     auto evt = scoped_prof("gpu-unload");
+     // try to remove levels.
+     Timer unload_timer;
++    // __ps5__ loader-unload: keep at most 4 levels resident; Jak 2/3 allow 7/11, and each big level is
++    // hundreds of MB of CPU copies, so a few level changes in a row ran out of memory (operator new trap in
++    // the loader thread). Only levels unused for 180 frames are dropped, so this never evicts a level in use.
++#ifdef __ps5__
++    if ((int)m_loaded_tfrag3_levels.size() >= std::min(m_max_levels, 4)) {
++#else
+     if ((int)m_loaded_tfrag3_levels.size() >= m_max_levels) {
++#endif
+       auto to_unload = get_most_unloadable_level();
+       if (to_unload) {
+         auto& lev = m_loaded_tfrag3_levels.at(*to_unload);

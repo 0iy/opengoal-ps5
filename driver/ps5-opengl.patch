@@ -704,7 +704,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     (void)context;
     if (!out_transfer)
        return NULL;
-@@ -7774,9 +8115,19 @@
+@@ -7774,15 +8115,42 @@
            info->dst.box.width, info->dst.box.height, info->mask);
  }
  
@@ -718,13 +718,84 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
 +   return r;
 +}
 +
++/* ponytail depth-blit: depth-only copies/resolves of GPU-tiled Z32F planes take the
++ * same u_blitter quad (depth-writing texfetch shader) instead of the CPU loop.
++ * PS5_NO_GPU_DEPTH_BLIT keeps the old software path. */
++static bool
++ps5_gpu_depth_blit_enabled(void)
++{
++   static int on = -1;
++   if (on < 0)
++      on = getenv("PS5_NO_GPU_DEPTH_BLIT") == NULL;
++   return on;
++}
++
 +static bool
 +ps5_blit_gpu_color_inner(struct ps5_context *context, const struct pipe_blit_info *info)
 +{
++   const bool depth = info && info->mask == PIPE_MASK_Z && ps5_gpu_depth_blit_enabled() &&
++                      PS5_ENABLE_DEPTH_TEXTURE_CANDIDATE &&
++                      (info->src.format == PIPE_FORMAT_Z32_FLOAT ||
++                       info->src.format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT);
     /* ponytail: plain-color copies using existing sampler layouts and
      * directly renderable views. Keep the measured floor and other fallbacks. */
     if (!PS5_ENABLE_RENDER_TO_TEXTURE_CANDIDATE || !PS5_ENABLE_MRT_CANDIDATE ||
-@@ -7942,6 +8293,7 @@
+        !PS5_ENABLE_UBO_CANDIDATE || !context || !info ||
+        !info->src.resource || !info->dst.resource ||
+-       info->mask != PIPE_MASK_RGBA ||
++       (info->mask != PIPE_MASK_RGBA && !depth) ||
++       (depth && info->filter != PIPE_TEX_FILTER_NEAREST) ||
+        (info->filter != PIPE_TEX_FILTER_NEAREST && info->filter != PIPE_TEX_FILTER_LINEAR) ||
+        info->num_window_rectangles || info->alpha_blend || info->swizzle_enable ||
+        info->sample0_only || info->dst_sample || context->render_condition_query ||
+@@ -7829,11 +8197,12 @@
+    uintptr_t addresses[2];
+    size_t spans[2];
+    if (info->src.format != info->dst.format ||
+-       (info->src.format != PIPE_FORMAT_R8G8B8A8_UNORM &&
++       (!depth &&
++        info->src.format != PIPE_FORMAT_R8G8B8A8_UNORM &&
+         info->src.format != PIPE_FORMAT_R8_UNORM &&
+         info->src.format != PIPE_FORMAT_R8G8_UNORM &&
+         info->src.format != PIPE_FORMAT_R16G16B16A16_FLOAT) ||
+-       (resolve && info->src.format != PIPE_FORMAT_R8G8B8A8_UNORM))
++       (resolve && !depth && info->src.format != PIPE_FORMAT_R8G8B8A8_UNORM))
+       return false;
+    for (unsigned i = 0; i < 2; ++i) {
+       const struct ps5_resource *r = resources[i];
+@@ -7846,9 +8215,9 @@
+           ((!resolve || i) &&
+            (r->base.nr_samples > 1 || r->base.nr_storage_samples > 1)) ||
+           r->base.format != info->src.format ||
+-          !(r->base.bind & PIPE_BIND_RENDER_TARGET) ||
++          !(r->base.bind & (depth ? PIPE_BIND_DEPTH_STENCIL : PIPE_BIND_RENDER_TARGET)) ||
+           (r->base.bind & PIPE_BIND_DISPLAY_TARGET) ||
+-          r->depth_staging_size ||
++          r->depth_staging_size || (depth && r->external_cpu_access) ||
+           !r->data || !r->allocation_size ||
+           r->allocation_size > UINTPTR_MAX - (uintptr_t)r->data ||
+           !r->base.width0 || !r->base.height0 ||
+@@ -7877,7 +8246,7 @@
+          .texture = (struct pipe_resource *)&r->base, .format = r->base.format,
+          .level = levels[i], .first_layer = b->z, .last_layer = b->z,
+       };
+-      unsigned pitch = ps5_linear_color_pitch(&selected);
++      unsigned pitch = depth ? 0 : ps5_linear_color_pitch(&selected);
+       size_t offset = 0;
+       if (pitch) {
+          offset = (size_t)b->z * r->layer_stride + r->level_offset[levels[i]];
+@@ -7889,7 +8258,9 @@
+              ps5_linear_sampled_layout(&r->base) || r->render_staging_size)
+             return false;
+          offset = (size_t)b->z * r->layer_stride;
+-         spans[i] = resolve && !i ? ps5_tiled_color_msaa4_surface_size(
++         spans[i] = depth ? ps5_tiled_depth_surface_size(
++             r->base.width0, r->base.height0, r->base.nr_samples == 4 ? 4u : 1u) :
++             resolve && !i ? ps5_tiled_color_msaa4_surface_size(
+              r->base.format, r->base.width0, r->base.height0) :
+              ps5_tiled_color_surface_size(r->base.format, r->base.width0,
+                                            r->base.height0);
+@@ -7942,6 +8313,7 @@
     /* Framebuffer changes submit prior producers. The deferred draw retains
      * both textures and uploader storage, and its normal GPU barriers order
      * sampling after those producers. CPU fallbacks still drain below. */
@@ -732,7 +803,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     context->deferred_blitter_draw = true;
     const struct pipe_scissor_state clip = {
        .minx = (uint16_t)left, .miny = (uint16_t)bottom,
-@@ -7952,6 +8304,7 @@
+@@ -7952,6 +8324,7 @@
                               info->mask, info->filter, &clip,
                               false, false, 0, NULL);
     context->deferred_blitter_draw = false;
@@ -740,7 +811,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     pipe_sampler_view_reference(&view, NULL);
     context->viewport_valid = viewport_valid;
     context->scissor_valid = scissor_valid;
-@@ -7966,6 +8319,55 @@
+@@ -7966,6 +8339,55 @@
     return true;
  }
  
@@ -796,7 +867,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  static void
  ps5_blit(struct pipe_context *context, const struct pipe_blit_info *info)
  {
-@@ -7985,9 +8387,26 @@
+@@ -7985,9 +8407,26 @@
     bool direct_tiled_dst;
     unsigned min_x, min_y, max_x, max_y;
  
@@ -823,7 +894,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     ps5_draw_batch_drain_buffer(info ? info->src.resource : NULL);
     ps5_draw_batch_drain_buffer(info ? info->dst.resource : NULL);
     if (PS5_ENABLE_MSAA4_CANDIDATE && info && info->src.resource &&
-@@ -8460,6 +8879,77 @@
+@@ -8460,6 +8899,77 @@
     context->texture_unmap(context, transfer);
  }
  
@@ -901,7 +972,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  static bool
  ps5_generate_mipmap(struct pipe_context *context,
                      struct pipe_resource *base,
-@@ -8468,11 +8958,52 @@
+@@ -8468,11 +8978,52 @@
                      unsigned first_layer, unsigned last_layer)
  {
     struct ps5_resource *resource = (struct ps5_resource *)base;
@@ -956,7 +1027,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     if (!PS5_ENABLE_TEXTURE_MIPMAP_CANDIDATE || !resource ||
         format != resource->base.format ||
         base_level >= last_level || last_level > resource->base.last_level ||
-@@ -8499,12 +9030,18 @@
+@@ -8499,12 +9050,18 @@
        return false;
     }
  
@@ -976,7 +1047,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
        unsigned dst_first = first_layer;
        unsigned dst_last = last_layer;
        unsigned src_depth = 1;
-@@ -8524,7 +9061,7 @@
+@@ -8524,7 +9081,7 @@
           if (!depth && (base->target == PIPE_TEXTURE_2D || base->target == PIPE_TEXTURE_2D_ARRAY) &&
               (src_width == 2u * dst_width || src_width == 1) &&
               (src_height == 2u * dst_height || src_height == 1) &&
@@ -985,7 +1056,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
              struct pipe_blit_info blit = {0};
              blit.src.resource = blit.dst.resource = base;
              blit.src.format = blit.dst.format = format;
-@@ -8539,12 +9076,31 @@
+@@ -8539,12 +9096,31 @@
              if (ps5_blit_gpu_color((struct ps5_context *)context, &blit)) {
                 if (((struct ps5_context *)context)->last_draw_status)
                    return true; /* Attempted GPU failure must not replay another path. */
@@ -1020,7 +1091,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
           unsigned src_z0 = resource->base.target == PIPE_TEXTURE_3D
                                ? (unsigned)((uint64_t)layer * src_depth /
                                             dst_depth)
-@@ -8612,9 +9168,8 @@
+@@ -8612,9 +9188,8 @@
           }
        }
     }
@@ -1032,7 +1103,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     return true;
  }
  
-@@ -9703,6 +10258,16 @@
+@@ -9703,6 +10278,16 @@
     return offset + first * stride;
  }
  
@@ -1049,7 +1120,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  static void
  ps5_draw_vbo_locked(struct pipe_context *base,
                      const struct pipe_draw_info *info,
-@@ -9770,6 +10335,9 @@
+@@ -9770,6 +10355,9 @@
     uint32_t vs_out_control = 0;
     uint32_t vs_out_control_valid = 0;
  
@@ -1059,7 +1130,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     if (submitted)
        *submitted = false;
  
-@@ -9928,6 +10496,7 @@
+@@ -9928,6 +10516,7 @@
                  min_effective, max_effective);
  #endif
     }
@@ -1067,7 +1138,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     tessellation_active = context->tcs || context->tes;
     if (!context->vs || !context->fs || !context->framebuffer_valid ||
         (tessellation_active && (!context->tcs || !context->tes ||
-@@ -9951,6 +10520,7 @@
+@@ -9951,6 +10540,7 @@
     /* AGC submission still needs a valid physical color target when the API
      * framebuffer is depth-only.  Keep writes disabled with target_mask=0. */
     color_target_count = MAX2(context->framebuffer.nr_cbufs, 1);
@@ -1075,7 +1146,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     if (!ps5_encode_graphics_state(context, &graphics)) {
        context->last_draw_status = -18;
        return;
-@@ -10324,17 +10894,18 @@
+@@ -10324,17 +10914,18 @@
              context->last_draw_status = -9;
              return;
           }
@@ -1101,7 +1172,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     }
     if (tessellation_active &&
         (!ps5_prepare_tessellation_buffers(context, input_metadata,
-@@ -10345,6 +10916,7 @@
+@@ -10345,6 +10936,7 @@
        context->last_draw_status = -15;
        return;
     }
@@ -1109,7 +1180,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     if (!tessellation_active && !ps5_prepare_constant(context, context->vs, 0, input_user_data,
                               input_user_data_count, input_metadata,
                               context->gs ? NULL : &descriptor_bytes[0])) {
-@@ -10359,9 +10931,9 @@
+@@ -10359,9 +10951,9 @@
        context->last_draw_status = -15;
        return;
     }
@@ -1122,7 +1193,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     if (!tessellation_active &&
         !ps5_prepare_vertex_storage(context, input_metadata, input_user_data,
                                     input_user_data_count)) {
-@@ -10421,9 +10993,9 @@
+@@ -10421,9 +11013,9 @@
        context->last_draw_status = -15;
        return;
     }
@@ -1135,7 +1206,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     if (streamout_active &&
         !ps5_prepare_streamout(
            context, vertex_metadata, descriptor_resource, user_data,
-@@ -10573,6 +11145,7 @@
+@@ -10573,6 +11165,7 @@
        return;
     }
  
@@ -1143,7 +1214,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     if (ps5_agc_gate2_set_packages(vertex_package,
                                    vertex_package_size,
                                    context->fs->active->package,
-@@ -10772,7 +11345,7 @@
+@@ -10772,7 +11365,7 @@
  #ifdef PS5_GPU_PRESENT_BATCH
        /* Disabled depth AND stencil cannot access either backing buffer.
         * Any enabled/unknown control retains both flushes before GPU use. */
@@ -1152,7 +1223,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  #else
        const bool flush_depth_stencil = true;
  #endif
-@@ -10888,11 +11461,12 @@
+@@ -10888,11 +11481,12 @@
     if (info->index_size) {
        int rc;
  
@@ -1170,7 +1241,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
        if (ps5_agc_gate2_set_index_buffer_typed)
           rc = ps5_agc_gate2_set_index_buffer_typed(
              (uint8_t *)index_resource->data + index_offset,
-@@ -10923,9 +11497,28 @@
+@@ -10923,9 +11517,28 @@
     }
     /* Temporary Gate 5 bring-up: the runner still owns the target and command
      * submission, but now consumes packages compiled by Gallium state. */
@@ -1199,7 +1270,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     if (context->last_draw_status == 0) {
        for (unsigned i = 0; i < context->framebuffer.nr_cbufs; ++i) {
           const struct pipe_surface *surface = &context->framebuffer.cbufs[i];
-@@ -11226,6 +11819,8 @@
+@@ -11226,6 +11839,8 @@
  static bool
  ps5_batch_eligibility(struct ps5_context *context, unsigned rejects)
  {
@@ -1208,7 +1279,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     if (!rejects)
        context->batch_eligible++;
     else
-@@ -11353,6 +11948,12 @@
+@@ -11353,6 +11968,12 @@
           for (unsigned i = 0; i < context->framebuffer.nr_cbufs; ++i)
              if (texture == (const struct ps5_resource *)
                                context->framebuffer.cbufs[i].texture) {
@@ -1221,7 +1292,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
                 rejects |= BITFIELD_BIT(PS5_BATCH_REJECT_TEXTURE - 1);
                 break;
              }
-@@ -11376,10 +11977,10 @@
+@@ -11376,10 +11997,10 @@
           continue;
        context->descriptor_cache[stage][i] =
           context->descriptor_cache[stage][--context->descriptor_cache_count[stage]];
@@ -1234,7 +1305,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     return base->screen->resource_create(base->screen, templ);
  }
  
-@@ -11389,8 +11990,7 @@
+@@ -11389,8 +12010,7 @@
     for (unsigned stage = 0; stage < 3; ++stage) {
        struct pipe_resource *r = storage[stage];
        if (!r || r->reference.count != 1 || r->target != PIPE_BUFFER ||
@@ -1244,7 +1315,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
           continue;
        context->descriptor_cache[stage][context->descriptor_cache_count[stage]++] = r;
        storage[stage] = NULL; /* Transfer the existing reference. */
-@@ -11425,7 +12025,7 @@
+@@ -11425,7 +12045,7 @@
        const size_t live_bytes = stage ? ps5_descriptor_snapshot_size(
           (const struct ps5_context *)base, stage - 1) : source->size;
        if (stage)
@@ -1253,7 +1324,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
        if (templ.width0 > source->size)
           return false;
  #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DEFERRED_DRAW_BATCH)
-@@ -11531,7 +12131,10 @@
+@@ -11531,7 +12151,10 @@
     unsigned slots = MIN2(num_draws, PS5_MULTIDRAW_BATCH_CAPACITY);
     bool handled = false, retired = true;
  
@@ -1265,7 +1336,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
         ps5_any_primitive_query(context) ||
         !ps5_agc_gate2_batch_begin || !ps5_agc_gate2_batch_end ||
         !ps5_multidraw_eligible(context, info, indirect, draws, num_draws))
-@@ -11589,8 +12192,9 @@
+@@ -11589,8 +12212,9 @@
           break;
     }
     ps5_screen_submit_unlock(base->screen);
@@ -1277,7 +1348,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  release:
     /* ponytail: post-retirement cleanup failure pins bounded resources until
      * process teardown; unconfirmed retirement terminates before returning. */
-@@ -11628,6 +12232,102 @@
+@@ -11628,6 +12252,102 @@
  static unsigned ps5_inflight_head, ps5_inflight_count;
  static uint64_t ps5_submitted_sequence, ps5_completed_sequence;
  
@@ -1380,7 +1451,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  static void
  ps5_deferred_slot_release(struct ps5_deferred_slot *slot)
  {
-@@ -11712,6 +12412,7 @@
+@@ -11712,6 +12432,7 @@
     struct ps5_deferred_batch *batch = &ps5_inflight[ps5_inflight_head];
     ps5_completed_sequence = batch->sequence;
     ps5_deferred_batch_release(batch);
@@ -1388,7 +1459,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     ps5_inflight_head = (ps5_inflight_head + 1) % PS5_INFLIGHT_BATCH_CAPACITY;
     --ps5_inflight_count;
     return true;
-@@ -11723,6 +12424,14 @@
+@@ -11723,6 +12444,14 @@
     while (ps5_draw_batch_retire_one_locked(wait)) {}
  }
  
@@ -1403,7 +1474,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  static void
  ps5_draw_batch_flush_locked(void)
  {
-@@ -11730,9 +12439,28 @@
+@@ -11730,9 +12459,28 @@
        return;
     if (ps5_agc_gate2_batch_submit && ps5_agc_gate2_batch_retire) {
        ps5_draw_batch_retire_locked(false);
@@ -1434,7 +1505,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
           fputs("[ps5-gallium] deferred batch submission failed; terminating before resource release\n", stderr);
           fflush(stderr);
           _Exit(EXIT_FAILURE);
-@@ -11901,9 +12629,35 @@
+@@ -11901,9 +12649,35 @@
     return false;
  }
  
@@ -1471,7 +1542,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
     struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
        {3, ps5_prepare_clock()};
-@@ -11924,9 +12678,30 @@
+@@ -11924,9 +12698,30 @@
        ++ps5_texture_publication_epoch;
     /* ponytail: whole allocations, bounded by the batch capacity. Range tracking only
      * if conservative alias/arena overlap becomes a measured bottleneck. */
@@ -1502,7 +1573,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     } else {
        /* Find the youngest dependent batch. Newer unrelated work must stay in
         * flight; retiring the entire FIFO turns a small upload into a finish. */
-@@ -11936,8 +12711,14 @@
+@@ -11936,8 +12731,14 @@
              /* Do not submit unrelated queued work for a CPU access. */
              const uint64_t sequence =
                 ps5_inflight[(ps5_inflight_head + i) % PS5_INFLIGHT_BATCH_CAPACITY].sequence;
@@ -1517,7 +1588,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
              break;
           }
        }
-@@ -11951,6 +12732,35 @@
+@@ -11951,6 +12752,35 @@
     simple_mtx_unlock(&ps5_deferred_mutex);
  }
  
@@ -1553,7 +1624,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  static bool
  ps5_try_deferred_draw(struct pipe_context *base,
                        const struct pipe_draw_info *info, unsigned drawid_offset,
-@@ -11958,6 +12768,7 @@
+@@ -11958,6 +12788,7 @@
                        const struct pipe_draw_start_count_bias *draws,
                        unsigned num_draws)
  {
@@ -1561,7 +1632,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  #if defined(PS5_NATIVE_TITLE_RUNTIME) && defined(PS5_DRAW_PROFILE)
     struct ps5_prepare_scope scope __attribute__((cleanup(ps5_prepare_scope_end))) =
        {2, ps5_prepare_clock()};
-@@ -11976,9 +12787,18 @@
+@@ -11976,9 +12807,18 @@
     simple_mtx_lock(&ps5_deferred_mutex);
     if (ps5_deferred.owner && ps5_deferred.owner != context)
        ps5_draw_batch_flush_locked();
@@ -1581,7 +1652,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
        ps5_draw_batch_flush_locked();
        goto out;
     }
-@@ -11987,7 +12807,10 @@
+@@ -11987,7 +12827,10 @@
        handled = true;
        goto out;
     }
@@ -1593,7 +1664,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
        ps5_draw_batch_flush_locked();
        goto out; /* Allocation failure falls back only before this draw stages. */
     }
-@@ -12026,8 +12849,10 @@
+@@ -12026,8 +12869,10 @@
        occlusion_query->buffer = ps5_deferred.slots[slot].occlusion_buffer;
     }
     context->last_draw_status = 0;
@@ -1604,7 +1675,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     context->vertex_descriptor_table = saved[0];
     context->descriptor_storage[0] = saved[1];
     context->descriptor_storage[1] = saved[2];
-@@ -12044,13 +12869,18 @@
+@@ -12044,13 +12889,18 @@
        goto out; /* The ordinary path may retry this provably unsubmitted draw. */
     }
     handled = true;
@@ -1624,7 +1695,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     return handled;
  }
  #endif
-@@ -12607,6 +13437,29 @@
+@@ -12607,6 +13457,29 @@
  }
  
  static void
@@ -1654,7 +1725,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  ps5_draw_vbo(struct pipe_context *base, const struct pipe_draw_info *info,
               unsigned drawid_offset,
               const struct pipe_draw_indirect_info *indirect,
-@@ -12704,13 +13557,35 @@
+@@ -12704,13 +13577,35 @@
        context->legacy_flat_input_vertex = (triangle & 1u) ? 1 : 2;
     }
  
@@ -1692,7 +1763,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
            base, info, drawid_offset, indirect, draws, num_draws))
        return;
  #endif
-@@ -12765,8 +13640,10 @@
+@@ -12765,8 +13660,10 @@
     /* ponytail: one hardware queue lock; split per queue if parallel submit
      * becomes measurable and the runtime stops using process-global setters. */
     ps5_screen_submit_lock(&screen->base);
@@ -1703,7 +1774,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  #ifndef PS5_RUNTIME_QUIET
     if (context->tcs && context->tes)
        printf("[ps5-gallium] tessellation-draw status=%d hs=%08x final=%08x\n",
-@@ -12830,6 +13707,13 @@
+@@ -12830,6 +13727,13 @@
     struct ps5_context *context = (struct ps5_context *)base;
     unsigned max_targets = PS5_ENABLE_MRT_CANDIDATE
                               ? PS5_MAX_RENDER_TARGETS : 1;
@@ -1717,7 +1788,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     bool colors_valid = framebuffer && framebuffer->nr_cbufs <= max_targets;
     bool has_color = false;
     bool has_depth = framebuffer && framebuffer->zsbuf.texture;
-@@ -13174,8 +14058,11 @@
+@@ -13174,8 +14078,11 @@
           util_blitter_clear_render_target(blitter, &selected, &quantized,
                                             left, bottom, right - left, top - bottom);
        } else {
@@ -1729,7 +1800,35 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
        }
        context->deferred_blitter_draw = false;
        context->viewport_valid = viewport_valid;
-@@ -13266,8 +14153,13 @@
+@@ -13213,7 +14120,10 @@
+    const struct ps5_resource *target = (const struct ps5_resource *)surface.texture;
+    if (!target || (target->base.target != PIPE_TEXTURE_2D &&
+                    target->base.target != PIPE_TEXTURE_2D_ARRAY) ||
+-       target->base.nr_samples > 1 || target->base.nr_storage_samples > 1 ||
++       /* ponytail depth-blit: 4x targets clear with the same draw the game renders them with */
++       (target->base.nr_samples > 1 &&
++        (!PS5_ENABLE_MSAA4_CANDIDATE || target->base.nr_samples != 4 ||
++         target->base.nr_storage_samples != 4)) ||
+        target->base.last_level || !target->base.array_size ||
+        target->base.depth0 != 1 || !context->framebuffer.width || !context->framebuffer.height ||
+        target->base.width0 > PS5_MAX_DEPTH_WIDTH || target->base.height0 > PS5_MAX_DEPTH_HEIGHT ||
+@@ -13224,11 +14134,13 @@
+        (surface.format != PIPE_FORMAT_Z32_FLOAT &&
+         surface.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT) ||
+        target->base.format != surface.format || !target->data ||
+-       ps5_tiled_depth_surface_size(target->base.width0, target->base.height0, 1) >
++       ps5_tiled_depth_surface_size(target->base.width0, target->base.height0,
++                                    target->base.nr_samples == 4 ? 4u : 1u) >
+           target->allocation_size / (surface.last_layer + 1u) ||
+        ((buffers & PIPE_CLEAR_STENCIL) &&
+         (surface.format != PIPE_FORMAT_Z32_FLOAT_S8X24_UINT || !target->stencil_data ||
+-         ps5_tiled_stencil_surface_size(target->base.width0, target->base.height0) >
++         ps5_tiled_stencil_surface_size_samples(target->base.width0, target->base.height0,
++                                                target->base.nr_samples == 4 ? 4u : 1u) >
+             target->stencil_allocation_size / (surface.last_layer + 1u))))
+       return false;
+    unsigned left, bottom, right, top;
+@@ -13266,8 +14178,13 @@
        util_blitter_save_sample_mask(blitter, context->sample_mask, 1);
        util_blitter_save_framebuffer(blitter, &context->framebuffer);
        context->deferred_blitter_draw = true;
@@ -1745,7 +1844,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
        context->deferred_blitter_draw = false;
        context->viewport_valid = viewport_valid;
        context->framebuffer_valid = framebuffer_valid;
-@@ -13556,6 +14448,42 @@
+@@ -13556,6 +14473,42 @@
     return true;
  }
  
@@ -1788,7 +1887,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  static void
  ps5_clear(struct pipe_context *base, unsigned buffers,
            uint32_t color_clear_mask, uint8_t stencil_clear_mask,
-@@ -13570,6 +14498,9 @@
+@@ -13570,6 +14523,9 @@
  
     struct ps5_context *context = (struct ps5_context *)base;
     struct ps5_resource *resource;
@@ -1798,7 +1897,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  
     if (context && context->render_condition_query)
        ps5_draw_batch_drain_query(context->render_condition_query);
-@@ -13587,6 +14518,7 @@
+@@ -13587,6 +14543,7 @@
           if (context->last_draw_status != 0)
              return;
        } else {
@@ -1806,7 +1905,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
           ps5_draw_batch_drain_buffer(resource ? &resource->base : NULL);
           if (!ps5_clear_depth_stencil(context, depth_buffers, stencil_clear_mask,
                                        scissor_state, depth, stencil))
-@@ -13597,6 +14529,7 @@
+@@ -13597,6 +14554,7 @@
     if (!buffers)
        return;
     if (ps5_clear_gpu_color(context, buffers, color_clear_mask, scissor_state, color)) {
@@ -1814,7 +1913,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
        buffers &= ~PIPE_CLEAR_COLOR;
        if (!buffers || context->last_draw_status != 0)
           return;
-@@ -13605,8 +14538,10 @@
+@@ -13605,8 +14563,10 @@
      * must wait for any draw using the attachments they are about to modify. */
     if (context)
        for (unsigned i = 0; i < context->framebuffer.nr_cbufs; ++i)
@@ -1826,7 +1925,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     if (PS5_ENABLE_MSAA4_CANDIDATE && context &&
         context->framebuffer_valid &&
         ps5_clear_msaa4_color(context, buffers, color_clear_mask,
-@@ -17211,14 +18146,20 @@
+@@ -17211,14 +18171,20 @@
     if (!buffer || buffer->base.target != PIPE_BUFFER || !data ||
         offset > buffer->size || size > buffer->size - offset)
        return;
@@ -1851,7 +1950,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
  }
  
  /* Whole, identical single-level images need no detile/re-tile round trip. */
-@@ -17302,6 +18243,11 @@
+@@ -17302,6 +18268,11 @@
                            struct pipe_resource *src, unsigned src_level,
                            const struct pipe_box *src_box)
  {
@@ -1863,7 +1962,7 @@ diff -ruN a/src/gallium/ps5/ps5_screen.c b/src/gallium/ps5/ps5_screen.c
     if (ps5_copy_identical_image(dst, dst_level, dst_x, dst_y, dst_z, src, src_level, src_box))
        return;
     util_resource_copy_region(base, dst, dst_level, dst_x, dst_y, dst_z, src, src_level, src_box);
-@@ -17612,7 +18558,7 @@
+@@ -17612,7 +18583,7 @@
     context->base.set_shader_images = ps5_set_shader_images;
     context->base.launch_grid = ps5_launch_grid;
  #endif

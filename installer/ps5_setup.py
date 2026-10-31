@@ -932,7 +932,8 @@ def agent_too_old(st):
 
 def make_plan(st, o, done):
     """Missing steps as a pure function of the live state, the options and the steps already run in this session."""
-    if st["app"] is not None and not o.update and (update_state(st, o) != "update" or "upload" in done):
+    broken = bool((st["app"] or {}).get("unwritable")) and "upload" not in done  # app up to date, but its data folders are not writable (#5)
+    if st["app"] is not None and not o.update and not broken and (update_state(st, o) != "update" or "upload" in done):
         return []
     steps = []
     if o.no_agent:

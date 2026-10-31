@@ -55,6 +55,9 @@ void log_open() {
   g_log_dst.sin_family = AF_INET;
   g_log_dst.sin_port = htons(9999);
   inet_pton(AF_INET, "255.255.255.255", &g_log_dst.sin_addr);
+  // The log was never rotated (hundreds of MB): keep one previous copy, start a fresh file when it passes 32 MB.
+  struct stat st;
+  if (stat("/data/opengoal/log/ps5.log", &st) == 0 && st.st_size > (32 << 20)) rename("/data/opengoal/log/ps5.log", "/data/opengoal/log/ps5.log.1");
   g_log_file = std::fopen("/data/opengoal/log/ps5.log", "a");
 }
 

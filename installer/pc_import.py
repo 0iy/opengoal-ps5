@@ -789,6 +789,9 @@ def check_console(host, port):
         raise Fail("net", "cannot reach the console at %s:%d (%s). Is the app open on the PS5?" % (host, port, e))
     if code != 200 or json.loads(body or b"{}").get("install_api") != 1:
         raise Fail("console_old", "the app on the console is too old for PC import (no /api/install); update it")
+    bad = json.loads(body).get("unwritable") or []
+    if bad:  # would fail later with ENOENT/EACCES after minutes of extraction (#5)
+        raise Fail("folders", "the app cannot write %s. Run the one-line install again: the setup repairs these folders." % ", ".join(bad))
 
 
 def upload(rep, host, port, game, entries, total, jobs, mode, meta, phase="upload"):

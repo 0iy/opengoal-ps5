@@ -487,6 +487,57 @@
    ]
   },
   {
+   "id": "loader-budget",
+   "kind": "patch",
+   "path": "ports/patches/0030-loader-budget.patch",
+   "required": false,
+   "description": "Level streaming uploads at most 2 ms / 512 KB of textures per frame on PS5 (stutter while driving fast in the Jak 2 city) and queries max anisotropy once.",
+   "touches": [
+    "game/graphics/opengl_renderer/loader/LoaderStages.cpp"
+   ],
+   "markers": [
+    {
+     "file": "game/graphics/opengl_renderer/loader/LoaderStages.cpp",
+     "text": "__ps5__ load-budget"
+    }
+   ]
+  },
+  {
+   "id": "loader-unload",
+   "kind": "patch",
+   "path": "ports/patches/0060-loader-unload.patch",
+   "required": false,
+   "description": "Unused level data is freed once 4 levels are resident (Jak 2/3 keep up to 7/11); several level changes in a row ran out of memory in the loader thread.",
+   "touches": [
+    "game/graphics/opengl_renderer/loader/Loader.cpp"
+   ],
+   "markers": [
+    {
+     "file": "game/graphics/opengl_renderer/loader/Loader.cpp",
+     "text": "__ps5__ loader-unload"
+    }
+   ]
+  },
+  {
+   "id": "merc-instancing",
+   "kind": "patch",
+   "path": "ports/patches/0050-merc-instancing.patch",
+   "required": false,
+   "description": "Merc foreground draws with equal geometry and material (different models) are drawn as one instanced draw; bones, lights and instance data come from buffer textures (shader merc2_inst built from merc2 at load). Off with config/noinstance.txt.",
+   "touches": [
+    "game/graphics/opengl_renderer/Shader.cpp",
+    "game/graphics/opengl_renderer/Shader.h",
+    "game/graphics/opengl_renderer/foreground/Merc2.cpp",
+    "game/graphics/opengl_renderer/foreground/Merc2.h"
+   ],
+   "markers": [
+    {
+     "file": "game/graphics/opengl_renderer/foreground/Merc2.cpp",
+     "text": "__ps5__ merc-instancing"
+    }
+   ]
+  },
+  {
    "id": "ingame-settings",
    "kind": "script",
    "path": "patch_ps5_ingame_settings.py",

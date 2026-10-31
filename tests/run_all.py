@@ -239,6 +239,12 @@ def t_ps5_setup():
     return tail(p, 1)
 
 
+@check("console tools unit tests")
+def t_tools():
+    p = run([PY, "-m", "unittest", "discover", "-s", "tests", "-p", "test_ps5tools.py"], timeout=120)
+    assert p.returncode == 0, tail(p)
+
+
 @check("qa pipeline unit tests")
 def t_qa():
     for mod in ("numpy", "PIL"):

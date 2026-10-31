@@ -24,6 +24,14 @@ void ps5_log_import_addrs();
 extern "C" void ps5sdl_set_display_mode(int width, int height, int hz);
 
 // 0777 regardless of umask: folders made by another user or an older build must stay writable for the game process
+// /data/opengoal/config/debugrepl.txt: start the engine's DECI2 listener (ports 8112/8113/8114 for Jak 1/2/3) so goalc can
+// connect. -boot turns it off (MasterDebug 0). -debug-mem turns it back on without the debug segment, but Jak 2 then
+// never allocates its output buffer (kprint.cpp init_output needs MasterDebug && DebugSegment) and crashes: it needs -debug.
+static void add_repl_args(std::vector<std::string>& args, const std::string& game) {
+  struct stat st;
+  if (stat("/data/opengoal/config/debugrepl.txt", &st) == 0) args.push_back(game == "jak2" ? "-debug" : "-debug-mem");
+}
+
 static void ensure_dir(const char* path) {
   if (mkdir(path, 0777) != 0 && errno != EEXIST) ps5_log("mkdir %s failed: errno %d (%s)", path, errno, strerror(errno));
   chmod(path, 0777);
@@ -89,6 +97,7 @@ static void start_engine(const LaunchChoice& choice) {
   g_engine.argv.clear();
   g_engine.started = false;
   g_engine.args = {"gk", "-v", "--proj-path", choice.project_path, "--game", choice.game, "--", "-boot", "-fakeiso"};
+  add_repl_args(g_engine.args, choice.game);
   for (auto& a : g_engine.args) g_engine.argv.push_back(a.data());
   g_engine.argv.push_back(nullptr);
   pthread_attr_t attr;
@@ -248,6 +257,7 @@ launcher_round:
     }
     std::vector<std::string> args = {"gk",      "-v",   "--proj-path", choice.project_path, "--game",
                                      choice.game, "--",   "-boot",       "-fakeiso"};
+    add_repl_args(args, choice.game);
     std::vector<char*> argv;
     for (auto& a : args) argv.push_back(a.data());
     argv.push_back(nullptr);
