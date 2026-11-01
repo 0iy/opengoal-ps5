@@ -353,7 +353,13 @@ extern "C" void ps5_crash_handler(int sig, siginfo_t* si, void* uc_) {
     }
   }
   sceKernelUsleep(400000);  // let the stdio forwarder drain the engine's last lines
-  _exit(128 + sig);
+  // Hand the fault to the system's crash path (coredump sequence, kill) instead of exiting here: exit() inside a signal
+  // handler made the kernel kill the thread with SIGSYS and warn "copyin: has nonsleeping lock", and such exits were
+  // followed by kernel panics. With the default action restored, the faulting instruction faults again on return.
+  struct sigaction dfl {};
+  dfl.sa_handler = SIG_DFL;
+  sigaction(sig, &dfl, nullptr);
+  if (si && si->si_code <= 0) raise(sig);  // sent by kill/raise/abort: there is no instruction to fault again
 }
 
 // ---- optional sampling profiler (only when /data/opengoal/config/profile.txt exists) -------------------
