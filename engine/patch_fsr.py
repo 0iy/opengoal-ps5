@@ -605,7 +605,8 @@ c = rep(c, """  glViewport(render_state->draw_offset_x, render_state->draw_offse
   glBindFramebuffer(GL_FRAMEBUFFER, 0);""", """  glViewport(m_fsr.win_x, m_fsr.win_y, m_fsr.win_w, m_fsr.win_h);  // ps5_fsr: window pixels
   glBindTexture(GL_TEXTURE_2D, *window_blit_src->tex_id);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  if (m_fsr.safe_area) {  // __ps5__ safe area: black border around the shrunk image (after the bind: never the source)
+  {  // __ps5__ black border around the final image (after the bind: never the source); every frame: a smaller display
+     // area or another aspect ratio leaves window pixels the image does not cover, and stale frames stayed there
     glDisable(GL_SCISSOR_TEST);
     glClearColor(0.f, 0.f, 0.f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);

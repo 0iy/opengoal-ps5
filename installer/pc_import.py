@@ -22,8 +22,8 @@ BASE = "https://github.com/open-goal/jak-project/releases/download/" + RELEASE +
 # our toolchain pack (patched goal_src, game assets with the PS5 menu texts, precompiled game code): a release asset, pinned by hash
 PACK_NAME = "opengoal-ps5-pack.tgz"
 PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.2.0/" + PACK_NAME
-PACK_SIZE = 19615838
-PACK_SHA256 = "2a31a58da147afdd09ed541df78eceee3d971a5c03008a10ad3760c4d4301d9b"
+PACK_SIZE = 19615823
+PACK_SHA256 = "1275e167fe52dc9f9b9baedd6ff6e70b06abe9600d899e2948644231b7fb4ee9"
 TOOLS = {  # sizes/sha256 from the GitHub release API digests
     "windows": ("opengoal-windows-v0.3.9.zip", 42598650, "d2000d4d934313541ac38cb1a801838dac1447b623b4fae58638fd319864a162"),
     "linux": ("opengoal-linux-v0.3.9.tar.gz", 43512280, "acacd03896e09902503fee2ac98e8cb72228cfd221d8ff96b3e88a98ada04ee1"),

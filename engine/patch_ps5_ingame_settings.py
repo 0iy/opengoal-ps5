@@ -320,7 +320,7 @@ J1_PRUNE = """;; __ps5__ native menus: PC-only entries are hidden by giving each
     dst))
 
 (defun ps5-prune-remap! ()
-  (dotimes (i (-> *options-remap* length))
+  (dotimes (i (-> *options-remap* allocated-length)) ;; length stays 0: init-game-options fills it by index
     (let ((l (-> *options-remap* i)))
       (if (and l (nonzero? l)) (set! (-> *options-remap* i) (ps5-pruned l)))))
   0)
