@@ -133,7 +133,7 @@ print("unknown game ok")
 
 # 9b. version/format reporting, the console log tail and readable install errors
 info = json.loads(pc.http_json("127.0.0.1", PORT, "GET", "/api/info")[1])
-assert "app" in info and info["formats"] == {"jak1": 1}, info  # jak1 was installed by this run with format=DATA_FORMAT; app = VERSION file of the app (absent here)
+assert "app" in info and info["formats"] == {"jak1": pc.DATA_FORMAT}, info  # jak1 was installed by this run with format=DATA_FORMAT; app = VERSION file of the app (absent here)
 assert open(os.path.join(data, ".format")).read().strip() == str(pc.DATA_FORMAT)
 os.makedirs(os.path.join(ROOT, "log"), exist_ok=True)
 open(os.path.join(ROOT, "log", "ps5.log"), "w").write("".join("line %d" % i + chr(10) for i in range(50000)))

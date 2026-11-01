@@ -13,22 +13,22 @@ import argparse, collections, hashlib, io, json, os, platform, re, shutil, socke
 import threading, time, traceback, urllib.request, zipfile, zlib
 from concurrent.futures import ThreadPoolExecutor
 
-DATA_FORMAT = 1            # layout of an installed game. Raise it (here and in ps5_setup.py) when a new app cannot read games installed by an older import
+DATA_FORMAT = 2            # 2: game code from upstream v0.3.9 with the PS5 menus. layout of an installed game. Raise it (here and in ps5_setup.py) when a new app cannot read games installed by an older import
 MAGIC = b"PS5IMP01"
 FRAME = 4 << 20            # raw bytes per frame
 C_RAW, C_DEFLATE, C_END = 0, 1, 255
-RELEASE = "v0.3.6"         # == engine/ports/upstream.lock commit 553a713 (verified: git tag v0.3.6 is that commit)
+RELEASE = "v0.3.9"         # == engine/ports/upstream.lock commit b6c8430 (verified: git tag v0.3.9 is that commit)
 BASE = "https://github.com/open-goal/jak-project/releases/download/" + RELEASE + "/"
 # our toolchain pack (patched goal_src, game assets with the PS5 menu texts, precompiled game code): a release asset, pinned by hash
 PACK_NAME = "opengoal-ps5-pack.tgz"
-PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.1.0/" + PACK_NAME
-PACK_SIZE = 22161741
-PACK_SHA256 = "15a18a26157745bc7adf7f2c9f8b6ee476ddbc3016d629858f5a7cfab7048bcc"
+PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.2.0/" + PACK_NAME
+PACK_SIZE = 19615838
+PACK_SHA256 = "2a31a58da147afdd09ed541df78eceee3d971a5c03008a10ad3760c4d4301d9b"
 TOOLS = {  # sizes/sha256 from the GitHub release API digests
-    "windows": ("opengoal-windows-v0.3.6.zip", 42097216, "98aa727f10414faa0d60c233827f472d057150f56baf85506858592d39656cb0"),
-    "linux": ("opengoal-linux-v0.3.6.tar.gz", 43037303, "580005f837ecb151c26bb42af5281150721eae45e92206cbab5fb13dbd83e6e4"),
-    "macos-arm": ("opengoal-macos-arm-v0.3.6.tar.gz", 42001033, "49515bd0bfd0e584aa54ce111dd895c0e9d52c71c951b4ea0f6b7751c480746e"),
-    "macos-intel": ("opengoal-macos-intel-v0.3.6.tar.gz", 42000808, "3cd85e3bb3d2d6dd113a61f0e3a4e059cf579230a85d0ea8407cc2d19d4cf011"),
+    "windows": ("opengoal-windows-v0.3.9.zip", 42598650, "d2000d4d934313541ac38cb1a801838dac1447b623b4fae58638fd319864a162"),
+    "linux": ("opengoal-linux-v0.3.9.tar.gz", 43512280, "acacd03896e09902503fee2ac98e8cb72228cfd221d8ff96b3e88a98ada04ee1"),
+    "macos-arm": ("opengoal-macos-arm-v0.3.9.tar.gz", 41239582, "613d7b2b2171fd1840c71b2928e1352ee1b5f2ec8df5a4ec76c1bfe91b926d42"),
+    "macos-intel": ("opengoal-macos-intel-v0.3.9.tar.gz", 42486346, "7388d3f2a42b8cde8e0e83e0fe202dc5eba05239e68c4fdbd49f632c871f31ab"),
 }
 # serial -> (game, region, territory). Same list as app/shim/importer.cpp + webpage.cpp + the upstream extractor database.
 DISCS = {

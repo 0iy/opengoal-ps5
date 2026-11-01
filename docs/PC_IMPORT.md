@@ -68,7 +68,7 @@ not in the Python standard library before 3.14; the console already links zstd, 
 
 ```
 detect ISO (serial -> game/region/variant)     reads ~100 KB, same rules as importer.cpp
-tools   official release v0.3.6 (= ports/upstream.lock commit 553a713, git tag checked) -> ~/.opengoal-ps5/tools, size + sha256 verified
+tools   official release v0.3.9 (= ports/upstream.lock commit b6c8430, git tag checked) -> ~/.opengoal-ps5/tools, size + sha256 verified
 extract extractor --extract --validate         ISO -> <proj>/iso_data/<game>
 decompile extractor --decompile                -> <proj>/decompiler_out/<game> (raw_obj/*.go ...) and <proj>/out/<game>/fr3
 text    goalc -c '(make-group "text")'         -> out/<game>/iso/*.TXT          (fallback without codepack: extractor --compile, slow)
@@ -145,7 +145,7 @@ pc_import.py --game auto|jak1|jak2|jak3 --iso PATH --ps5 IP [--port 8080] [--too
              [--dry-run] [--out DIR] [--keep-work]
 ```
 
-* `--tools-dir DIR` uses `DIR/extractor[.exe]`, `goalc`, `data/` as they are (no download, no hash check). Default: download once to `~/.opengoal-ps5/tools/v0.3.6/<windows|linux|macos-arm|macos-intel>` (urllib, size and sha256 pinned in the script, verified, reused).
+* `--tools-dir DIR` uses `DIR/extractor[.exe]`, `goalc`, `data/` as they are (no download, no hash check). Default: download once to `~/.opengoal-ps5/tools/v0.3.9/<windows|linux|macos-arm|macos-intel>` (urllib, size and sha256 pinned in the script, verified, reused).
 * `--dry-run` runs everything except the upload and prints the byte counts; `--out DIR` additionally writes the finished tree to `DIR/data` **through the real wire format and reference decoder** (so it tests the stream too) and implies `--dry-run`.
 * `--jobs` = compression threads (default `min(8, cpus)`).
 * Exit code 0 ok, 1 failed (the last JSON line says why).

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.0 (2026-11-01)
+
+Update note: the games must be imported again after this update (the setup lists them). The app now runs jak-project v0.3.9 and needs game code built for it.
+
+### Added
+- Engine on jak-project v0.3.9. The PC import downloads the official v0.3.9 tools and a new toolchain pack
+- Native PS5 game menus: PC-only entries (quit to desktop, keyboard, mouse, window, Discord, MSAA, display options) are gone, console defaults are set
+- Game language follows the PS5 system language; the image follows the system safe area, with an own display area setting (90-100 %) in the launcher and game menus
+- Performance overlay (setting)
+- Jak 2/3 pause-menu background stays correct when the resolution changes while the menu is open
+
+### Changed
+- Faster drawing of characters (instanced draws) and an adaptive level load budget (less pop-in, e.g. Dead Town)
+
+### Fixed
+- Jak 2/3 ran out of memory after several level changes in a row
+- Black level geometry after the pause menu: the loader no longer drops a level the game still needs
+- Jak 2: one black frame (only Jak and objects visible) when the pause menu closes
+- 4 s stutter from a debug profiler dump
+- A crash inside the crash handler no longer hangs the console
+
 ## 0.1.4 (2026-10-29)
 
 ### Fixed

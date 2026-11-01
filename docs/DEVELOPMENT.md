@@ -62,7 +62,7 @@ Every behaviour change must be switchable by a flag file `/data/opengoal/config/
 
    | What | Source | Revision | Where |
    |---|---|---|---|
-   | jak-project | https://github.com/open-goal/jak-project | `553a713aed3794f454fa7b45a1f1ef443bbb914a` (v0.3.6), submodules | `~/jak` |
+   | jak-project | https://github.com/open-goal/jak-project | `b6c8430c0b0a5cb139b939bcf0ffd25285b896c7` (v0.3.9), submodules | `~/jak` |
    | ps5-opengl SDK | https://github.com/JVK3R/ps5-opengl/releases (mirror, release v1.0.0, asset `ps5-opengl-sdk-1.0.0.tar.gz` saved as `sdk.tgz`; the original blackbearreloaded repository is gone) | sha256 `f93643c04c843d56143b00951df1f8042ea7706ae9f19e4e9abf158e1ead77c5` | `~/gl/sdk.tgz` |
    | ps5-native-app-boilerplate | https://github.com/drakmor/ps5-native-app-boilerplate | `b8dc4a3fe2e05e826b037bd68824751c7468a6d7` | `~/ps5app` (run its `make` once, it fetches the payload SDK v0.42 into `.deps`) |
    | Mesa, opengnm-psbc | inside the SDK archive (`sources/`) | Mesa 26.2.0, sha256 `efd4bb08cdb7c365a812cd4e6c9202ab55b2f22cdcd13c7d6c4f9647b799a4ef` | `~/gl/src/ps5-opengl/third_party` |
