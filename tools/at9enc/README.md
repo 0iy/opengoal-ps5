@@ -15,6 +15,15 @@ superframe budget. Frames are packed sequentially, and each superframe is zero-p
 Not implemented: intensity stereo, band extension, parameter reuse, and fine (>15 bit)
 precision.
 
+## PS5 home screen: use `--fps1`
+
+The encoder lets a frame use what earlier frames of its superframe left over, so frames inside a superframe differ in
+size. The PS5 home screen music player reads frame i at i * 128 bytes: with 4 frames per superframe it played only every
+first frame correctly (choppy, sped-up sound). `--fps1` writes one frame per superframe (block_align 128, superframe
+index 0 in the codec config), so every reader sees the same frames:
+
+    python3 at9enc.py --fps1 template.at9 seg.wav snd0.at9
+
 ## Build snd0_new.at9 (WSL; static ffmpeg in ~/at9work/ffbin)
 
     FF=~/at9work/ffbin/ffmpeg-master-latest-linux64-gpl/bin

@@ -98,7 +98,12 @@ def run_game(game, settle, measure, nlev):
     say("levels (%d): %s" % (len(levels), " ".join(levels)))
     per, total_txt = [], ""
     for c in levels:
-        R.run('(start (quote play) (get-continue-by-name *game-info* "%s"))' % c, wait=2, limit=30)
+        # the names come from a source tree that may differ from the code on the console: (start 'play #f) crashes the game
+        out = R.run('(let ((c (get-continue-by-name *game-info* "%s"))) (if c (start (quote play) c) (format #t "NOCONT~%%")))' % c,
+                    wait=2, limit=30)
+        if any("NOCONT" in l for l in out):
+            say("  %-26s skipped: no such continue point in the game code" % c)
+            continue
         time.sleep(settle)
         if game == "jak2":
             R.run(TRAFFIC, wait=1, limit=15)

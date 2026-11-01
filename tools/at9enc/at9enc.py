@@ -454,6 +454,10 @@ def read_chunks(buf):
 
 def parse_template(path):
     buf = open(path, 'rb').read()
+    return buf, read_chunks(buf), parse_template_buf(buf)
+
+
+def parse_template_buf(buf):
     chunks = read_chunks(buf)
     d = {c[0]: c for c in chunks}
     _, fp, fsz = d[b'fmt ']
@@ -470,7 +474,7 @@ def parse_template(path):
     sfi = (bits >> 3) & 3
     info = dict(tag=tag, nch=nch, rate=rate, brate=brate, balign=balign, ver=ver,
                 cfg=cfg.hex(), sr_idx=sr_idx, chcfg=chcfg, frame_bytes=fbytes, fps=1 << sfi)
-    return buf, chunks, info
+    return info
 
 
 def build_file(tbuf, chunks, data, nsamples, delay):
@@ -522,8 +526,22 @@ def main():
     exact = '--exact' in args   # keep every template header byte; only replace data payload
     if exact:
         args.remove('--exact')
+    # --fps1: one frame per superframe (block_align = frame_bytes). Frames here vary in size inside a superframe; a decoder
+    # that reads frame i at i * frame_bytes (the PS5 home screen music: choppy, sped-up sound) only gets them right this way.
+    fps1 = '--fps1' in args
+    if fps1:
+        args.remove('--fps1')
     tpl, inp, outp = args
     tbuf, chunks, info = parse_template(tpl)
+    if fps1 and info['fps'] != 1:
+        _, fp, _ = [c for c in chunks if c[0] == b'fmt '][0]
+        b = bytearray(tbuf)
+        struct.pack_into('<H', b, fp + 8 + 12, info['frame_bytes'])          # block_align
+        struct.pack_into('<H', b, fp + 8 + 18, 256 if info['sr_idx'] > 5 else 128)  # samples per block (one frame)
+        cfg = int.from_bytes(b[fp + 8 + 18 + 26:fp + 8 + 18 + 30], 'big') & ~(3 << 3)  # superframe index 0
+        b[fp + 8 + 18 + 26:fp + 8 + 18 + 30] = cfg.to_bytes(4, 'big')
+        tbuf = bytes(b)
+        tbuf, chunks, info = tbuf, read_chunks(tbuf), parse_template_buf(tbuf)
     print('template:', info, file=sys.stderr)
     assert info['chcfg'] == 2 and info['nch'] == 2, 'only stereo (single CPE block) supported'
     tab = Tables(os.path.join(HERE, 'atrac9tab.h'))
