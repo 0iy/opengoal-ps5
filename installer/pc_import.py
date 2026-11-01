@@ -722,7 +722,7 @@ def static_entries(proj, game):
 
 
 def play_entries(proj, game, recipe, objs, voices):
-    """(core entries, extra entries). Extra = voice banks of the other languages (VAGWAD.*), sent after the game is playable."""
+    """(core entries, extra entries). Extra = voice banks of the other languages (see voice_only), sent after the game is playable."""
     out = os.path.join(proj, "out", game)
     iso_out = "out/%s/iso/" % game
     core, extra = static_entries(proj, game), []
@@ -730,7 +730,7 @@ def play_entries(proj, game, recipe, objs, voices):
     if recipe:
         for dest, src in sorted(recipe["iso_copy"].items()):
             e = FileEntry(iso_out + dest, os.path.join(proj, "iso_data", game, *src.split("/")))
-            (extra if dest.startswith("VAGWAD.") and dest != "VAGWAD.ENG" else core).append(e)
+            (extra if voice_only(dest) else core).append(e)
         for dest, spec in sorted(recipe["dgo"].items()):
             core.append(build_dgo(iso_out + dest, dest, spec, objs, raw_obj))
         for dest in recipe["text"]:
@@ -743,13 +743,18 @@ def play_entries(proj, game, recipe, objs, voices):
             if f == "TSZ.DGO":
                 continue
             e = FileEntry(iso_out + f, os.path.join(out, "iso", f))
-            (extra if f.startswith("VAGWAD.") and f != "VAGWAD.ENG" else core).append(e)
+            (extra if voice_only(f) else core).append(e)
     fr3 = os.path.join(out, "fr3")
     if not os.path.isdir(fr3):
         raise Fail("decompile", "no fr3 output (level extraction failed)")
     for f in sorted(os.listdir(fr3)):
         core.append(FileEntry("out/%s/fr3/%s" % (game, f), os.path.join(fr3, f)))
     return core, ([] if voices == "en" else extra)
+
+
+def voice_only(name):
+    # Jak 3 keeps music in VAGWAD.INT and shared sounds in VAGWAD.COM: the game needs them, they are no voice language.
+    return name.startswith("VAGWAD.") and name not in ("VAGWAD.ENG", "VAGWAD.INT", "VAGWAD.COM")
 
 
 # ---------------------------------------------------------------------------------------------------------- upload

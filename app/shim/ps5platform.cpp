@@ -646,15 +646,34 @@ int cubeb_stream_start(cubeb_stream* s) {
     int16_t buffer[kGrain * 2];
     int peak = 0, last_rc = 0;
     uint32_t calls = 0;
+    // config/audiorec.txt (seconds), checked every second: record what the game outputs to log/audio.raw (48 kHz S16 stereo)
+    FILE* rec = nullptr;
+    uint32_t rec_left = 0;
+    auto check_rec = [&] {
+      FILE* fl = rec ? nullptr : std::fopen("/data/opengoal/config/audiorec.txt", "r");
+      if (!fl) return;
+      int secs = 0;
+      if (std::fscanf(fl, "%d", &secs) != 1 || secs <= 0 || secs > 120) secs = 20;
+      std::fclose(fl);
+      std::remove("/data/opengoal/config/audiorec.txt");
+      rec = std::fopen("/data/opengoal/log/audio.raw", "wb");
+      rec_left = (uint32_t)secs * s->rate / kGrain;
+      ps5_log("audio: recording %d s to log/audio.raw (%s)", secs, rec ? "ok" : "open failed");
+    };
     while (!s->quit.load()) {
       std::memset(buffer, 0, sizeof buffer);
       if (s->running.load() && s->data_cb) s->data_cb(s, s->user, nullptr, buffer, kGrain);
       {  // diag: loudest sample per second, to tell silence from missing output
         for (uint32_t i = 0; i < kGrain * 2; ++i) { int v = buffer[i] < 0 ? -buffer[i] : buffer[i]; if (v > peak) peak = v; }
-        if (++calls % 188 == 0) { ps5_log("audio: peak=%d over %u grains rc=%d", peak, calls, last_rc); peak = 0; }
+        if (++calls % 188 == 0) { check_rec(); ps5_log("audio: peak=%d over %u grains rc=%d", peak, calls, last_rc); peak = 0; }
+      }
+      if (rec) {
+        std::fwrite(buffer, sizeof buffer, 1, rec);
+        if (--rec_left == 0) { std::fclose(rec); rec = nullptr; ps5_log("audio: recording done"); }
       }
       last_rc = sceAudioOutOutput(s->handle, buffer);  // blocks for one grain of playback
     }
+    if (rec) std::fclose(rec);
   });
   if (s->state_cb) s->state_cb(s, s->user, CUBEB_STATE_STARTED);
   return CUBEB_OK;
