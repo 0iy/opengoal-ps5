@@ -20,6 +20,9 @@ Update note: the games must be imported again after this update (the setup lists
 - Jak 2: one black frame (only Jak and objects visible) when the pause menu closes
 - 4 s stutter from a debug profiler dump
 - A crash inside the crash handler no longer hangs the console
+- After a crash the app hands over to the system crash handling instead of exiting inside its own handler (that path was followed by console crashes and a database rebuild)
+- Stale image pieces beside the picture with a smaller display area or the 4:3 format: the border is cleared every frame
+- Jak 1: the PS5 menus now hide the PC-only entries
 
 ## 0.1.4 (2026-10-29)
 
