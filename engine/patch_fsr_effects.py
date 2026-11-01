@@ -76,6 +76,37 @@ edit("ut.filter", UT_CPP,
                                                                                 : GL_LINEAR  // filter, """ + MARK + """
 """)
 
+# MSAA (Jak 2 msaa=16): blitting the single-sample screen copy into the multisampled render buffer is GL_INVALID_OPERATION, so the
+# copy-back did nothing and the first frame after the pause menu closed showed only foreground over black. With MSAA the copy-back
+# now goes into the single-sample resolve buffer, after the resolve.
+edit("bd.pending", BD_H, "  void do_copy_back(SharedRenderState* render_state, ScopedProfilerNode& prof);\n",
+     "  void do_copy_back(SharedRenderState* render_state, ScopedProfilerNode& prof);\n"
+     "  bool copy_back_pending() const { return m_copy_back_pending; }  // " + MARK + ": msaa copy-back after the resolve\n")
+
+edit("gl.defer", GL, """  if (m_blit_displays) {
+    m_blit_displays->do_copy_back(&m_render_state, prof);
+  }
+""", """  // """ + MARK + """: with MSAA the copy-back waits for the resolve (do_pcrtc_effects); a blit into the MSAA buffer is invalid
+  if (m_blit_displays && !(m_fbo_state.resources.resolve_buffer.valid && m_blit_displays->copy_back_pending())) {
+    m_blit_displays->do_copy_back(&m_render_state, prof);
+  }
+""")
+
+edit("gl.resolve", GL, "    window_blit_src = &m_fbo_state.resources.resolve_buffer;\n",
+     """    window_blit_src = &m_fbo_state.resources.resolve_buffer;
+    if (m_blit_displays && m_blit_displays->copy_back_pending()) {  // """ + MARK + """: msaa copy-back into the resolved image
+      const auto fb = render_state->render_fb;
+      const int fw = render_state->render_fb_w, fh = render_state->render_fb_h;
+      render_state->render_fb = window_blit_src->fbo_id;
+      render_state->render_fb_w = window_blit_src->width;
+      render_state->render_fb_h = window_blit_src->height;
+      m_blit_displays->do_copy_back(render_state, prof);
+      render_state->render_fb = fb;
+      render_state->render_fb_w = fw;
+      render_state->render_fb_h = fh;
+    }
+""")
+
 
 def read(path):
     with open(path, encoding="utf-8", newline="") as f:

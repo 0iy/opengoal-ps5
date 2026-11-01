@@ -482,7 +482,7 @@ static void burst_capture(int w, int h) {
   using GetFn = void (*)(unsigned, int*);
   static int n = 0, taken = 0, read = 0, poll = 0;
   static unsigned tex[48], fbo[48];
-  const int bw = w / 2, bh = h / 2;
+  const int bw = w / 8, bh = h / 8;  // small copies: the half-size blit cost ~85 ms CPU per frame and slowed the game to 10 fps
   if (n == 0) {
     if (++poll % 30) return;
     FILE* f = std::fopen("/data/opengoal/config/burst.txt", "r");
@@ -501,14 +501,20 @@ static void burst_capture(int w, int h) {
   get(0x8CA6, &old_draw);  // DRAW_FRAMEBUFFER_BINDING
   get(0x8CAA, &old_read);  // READ_FRAMEBUFFER_BINDING
   get(0x8069, &old_tex);   // TEXTURE_BINDING_2D
-  if (taken < n) {  // copy this frame's screen into texture `taken`
+  static bool allocated = false;
+  if (!allocated) {  // all targets in the trigger frame: per-frame allocation slowed the game to ~11 fps and hid short glitches
     auto bindtex = reinterpret_cast<BindFn>(gl("glBindTexture"));
-    reinterpret_cast<GenFn>(gl("glGenTextures"))(1, &tex[taken]);
-    bindtex(0x0DE1, tex[taken]);
-    reinterpret_cast<StorFn>(gl("glTexStorage2D"))(0x0DE1, 1, 0x8058 /*RGBA8*/, bw, bh);
-    reinterpret_cast<GenFn>(gl("glGenFramebuffers"))(1, &fbo[taken]);
+    reinterpret_cast<GenFn>(gl("glGenTextures"))(n, tex);
+    reinterpret_cast<GenFn>(gl("glGenFramebuffers"))(n, fbo);
+    for (int i = 0; i < n; ++i) {
+      bindtex(0x0DE1, tex[i]);
+      reinterpret_cast<StorFn>(gl("glTexStorage2D"))(0x0DE1, 1, 0x8058 /*RGBA8*/, bw, bh);
+      bindfb(0x8CA9 /*DRAW*/, fbo[i]);
+      reinterpret_cast<AttFn>(gl("glFramebufferTexture2D"))(0x8CA9, 0x8CE0, 0x0DE1, tex[i], 0);
+    }
+    allocated = true;
+  } else if (taken < n) {  // copy this frame's screen into texture `taken`
     bindfb(0x8CA9 /*DRAW*/, fbo[taken]);
-    reinterpret_cast<AttFn>(gl("glFramebufferTexture2D"))(0x8CA9, 0x8CE0, 0x0DE1, tex[taken], 0);
     bindfb(0x8CA8 /*READ*/, 0);
     reinterpret_cast<BlitFn>(gl("glBlitFramebuffer"))(0, 0, w, h, 0, 0, bw, bh, 0x4000 /*COLOR*/, 0x2601 /*LINEAR*/);
     ++taken;
@@ -529,6 +535,7 @@ static void burst_capture(int w, int h) {
     if (++read == n) {
       ps5_log("burst: %d frames saved", n);
       n = 0;
+      allocated = false;
     }
   }
   bindfb(0x8CA9, unsigned(old_draw));

@@ -1010,9 +1010,13 @@
    "path": "patch_fsr_effects.py",
    "description": "Dynamic-resolution (FSR) follow-up: Jak 2/3 pause-menu screen copy is copied back with scaling when the render size changed while the menu was open. Needs the fsr step (marker ps5_fsr_v2).",
    "required": false,
+   "requires": [
+    "fsr"
+   ],
    "touches": [
     "game/graphics/opengl_renderer/BlitDisplays.cpp",
     "game/graphics/opengl_renderer/BlitDisplays.h",
+    "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
     "game/graphics/opengl_renderer/opengl_utils.cpp"
    ],
    "markers": [
@@ -1049,10 +1053,28 @@
      "kind": "text",
      "text": "                    render_fb_h,          // dstY1\n                    GL_COLOR_BUFFER_BIT,  // mask\n                    GL_NEAREST            // filter\n",
      "count": 1
+    },
+    {
+     "id": "fsr-effects.bd.pending",
+     "file": "game/graphics/opengl_renderer/BlitDisplays.h",
+     "kind": "text",
+     "text": "  void do_copy_back(SharedRenderState* render_state, ScopedProfilerNode& prof);\n",
+     "count": 1
+    },
+    {
+     "id": "fsr-effects.gl.defer",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "  if (m_blit_displays) {\n    m_blit_displays->do_copy_back(&m_render_state, prof);\n  }\n",
+     "count": 1
+    },
+    {
+     "id": "fsr-effects.gl.resolve",
+     "file": "game/graphics/opengl_renderer/OpenGLRenderer.cpp",
+     "kind": "text",
+     "text": "    window_blit_src = &m_fbo_state.resources.resolve_buffer;\n",
+     "count": 1
     }
-   ],
-   "requires": [
-    "fsr"
    ]
   },
   {
