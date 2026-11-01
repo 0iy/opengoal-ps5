@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <thread>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -66,6 +67,9 @@ std::string g_ip = "0.0.0.0";
 using namespace ps5imp;  // Phase enum: IDLE..FAILED (same numbers as Ps5GameStatus::phase)
 const char* const kPhase[] = {"idle", "uploading", "verifying", "queued", "importing", "done", "failed"};
 const char* const kStageName[] = {"", "prepare", "extract", "decompile", "compile"};
+extern "C" bool ps5sdl_game_active();
+static long long mono_ms_ws() { timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000; }
+
 const char* const kIds[3] = {"jak1", "jak2", "jak3"};
 const char* const kTitles[3] = {"Jak and Daxter", "Jak II", "Jak 3"};
 
@@ -134,6 +138,24 @@ bool installed(const char* id) {
   return dir_exists(base + "/out/" + id + "/fr3") && dir_exists(base + "/out/" + id + "/iso") && dir_exists(base + "/game/assets");
 }
 
+// installed() of every game, refreshed every 2 s on a thread of its own: the launcher asks for the status of each game in
+// every frame (under g_mu), and stat() blocks for seconds while an install writes gigabytes
+std::atomic<int> g_inst_mask{-1};
+bool installed_cached(int i) {
+  static std::atomic<bool> started{false};
+  if (!started.exchange(true))
+    std::thread([] {
+      for (;;) {
+        int m = 0;
+        for (int k = 0; k < 3; ++k) m |= installed(kIds[k]) ? 1 << k : 0;
+        g_inst_mask = m;
+        sleep(2);
+      }
+    }).detach();
+  const int m = g_inst_mask.load();
+  return m >= 0 && ((m >> i) & 1);
+}
+
 bool send_all(int fd, const char* p, size_t n) {
   while (n) {
     ssize_t w = send(fd, p, n, MSG_NOSIGNAL);
@@ -161,7 +183,7 @@ void fill_locked(int i, Ps5GameStatus* o) {
   std::memset(o, 0, sizeof *o);
   const int ph = g.phase.load();
   const long now = (long)time(nullptr);
-  o->installed = installed(kIds[i]) ? 1 : 0;
+  o->installed = installed_cached(i) ? 1 : 0;
   o->phase = ph;
   o->bytes = g.bytes.load();
   o->total = g.total.load();
@@ -477,6 +499,8 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
     }
     FsSink sink(stage_dir, add);
     std::unique_ptr<ps5inst::Receiver> rx(new ps5inst::Receiver(&sink, total));  // ~130 KB of tables: heap, the thread stack is small
+    unsigned long long throttled = 0;
+    long long tq0 = 0;
     bool ok = key.empty() && (pending.empty() || rx->feed(pending.data(), pending.size()));
     pending.clear();
     while (ok && !rx->finished()) {
@@ -486,6 +510,18 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
       if (r <= 0) { key = "net"; break; }
       g.last_io = (long)time(nullptr);
       ok = rx->feed(buf.data(), size_t(r));
+      // while a game runs, cap the disk writes at about 20 MB/s: unthrottled, the game's level loading waited 5 to 20 s
+      if (ps5sdl_game_active()) {
+        throttled += size_t(r);
+        const long long t = mono_ms_ws();
+        if (!tq0) tq0 = t;
+        const long long due = tq0 + (long long)(throttled / (20ull << 10));  // ms for `throttled` bytes at 20 MB/s
+        if (due > t) usleep(useconds_t((due - t) * 1000));
+        if (t - tq0 > 5000) { tq0 = mono_ms_ws(); throttled = 0; }
+      } else {
+        tq0 = 0;
+        throttled = 0;
+      }
     }
     if (key.empty() && !ok) {
       const std::string e = rx->error();
@@ -934,6 +970,8 @@ extern "C" void ps5_web_progress(unsigned long long* bytes, unsigned long long* 
 }
 
 // ---- stable C API for the launcher (include/ps5import.h) ------------------------------------------------------------
+extern "C" bool ps5_web_installing() { return g_installing.load(); }  // a PC import stream is writing a game right now
+
 extern "C" int ps5_game_status(const char* game, Ps5GameStatus* out) {
   const int i = game ? gidx(game) : -1;
   if (i < 0 || !out) return -1;

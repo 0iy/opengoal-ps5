@@ -717,7 +717,16 @@ extern "C" float ps5_safe_area_ratio(void) {
   return own > 0 && own < 100 && own / 100.0f < ratio ? own / 100.0f : ratio;
 }
 
+static std::atomic<long long> g_game_swap_ms{0};
+static long long mono_ms() { timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000; }
+// a game (not the launcher) presented a frame in the last 2 s: the PC install stream then throttles its disk writes
+extern "C" bool ps5sdl_game_active() {
+  const long long t = g_game_swap_ms.load();
+  return t && mono_ms() - t < 2000;
+}
+
 bool SDL_GL_SwapWindow(SDL_Window*) {
+  if (g_gl_phase.load() != 1) g_game_swap_ms = mono_ms();
   ps5_driver_gputrace_frame();
   ps5_profile_tick();
   {  // optional: /data/opengoal/config/renderpin.txt holds a CPU number to pin the swapping (render) thread to

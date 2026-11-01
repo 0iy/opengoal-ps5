@@ -813,15 +813,17 @@ def upload(rep, host, port, game, entries, total, jobs, mode, meta, phase="uploa
         rep.speed, rep.eta = int(sp), int((total - sent[0]) / sp) if sp > 0 else -1
         rep.emit(phase, min(99, 100 * sent[0] // max(1, total)), "%d / %d MB" % (sent[0] >> 20, total >> 20))
 
-    resp, got = bytearray(), threading.Event()
+    resp, got, sent_all = bytearray(), threading.Event(), threading.Event()
 
     def reader():  # the answer may come early (refusal): read while sending and stop sending as soon as it starts
         waited = 0
-        while waited < 300:
+        while waited < 600:
             try:
                 b = s.recv(65536)
             except socket.timeout:
-                waited += 60
+                # count only after the last byte went out: an upload of more than 5 min (slow Wi-Fi, a game running on the
+                # console) used to stop listening before the console answered and reported a failure for a finished install
+                waited += 60 if sent_all.is_set() else 0
                 continue
             except OSError:
                 break
@@ -841,7 +843,8 @@ def upload(rep, host, port, game, entries, total, jobs, mode, meta, phase="uploa
         s.shutdown(socket.SHUT_WR)  # tells a truncated-stream case apart on the console; harmless otherwise
     except OSError:
         pass  # the console may have answered with an error and closed; the reader has it
-    rt.join(300)  # the console verifies and renames after the END frame
+    sent_all.set()
+    rt.join(660)  # the console verifies and renames after the END frame; under load that took more than 60 s
     s.close()
     head, _, body = bytes(resp).partition(b"\r\n\r\n")
     DBG("upload %s mode=%s: sent %d of %d raw bytes in %.1fs, answer %r" % (game, mode, sent[0], total, time.time() - t0, bytes(resp)[:600]))

@@ -7,6 +7,8 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <atomic>
+#include <thread>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -473,8 +475,20 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
     rescan += dt;
     if (rescan > 2.0) {  // pick up game data copied while the launcher is open
       rescan = 0;
-      any_ready = false;
-      for (int i = 0; i < kGameCount; ++i) { ready[i] = game_ready(kGames[i].id); any_ready = any_ready || ready[i]; }
+      // stat() on a thread of its own: during an install it can block for seconds, and this loop draws every frame
+      static std::atomic<int> mask{-1};
+      static std::atomic<bool> scanning{false};
+      if (!scanning.exchange(true))
+        std::thread([] {
+          int m = 0;
+          for (int i = 0; i < kGameCount; ++i) m |= game_ready(kGames[i].id) ? 1 << i : 0;
+          mask = m;
+          scanning = false;
+        }).detach();
+      if (mask.load() >= 0) {
+        any_ready = false;
+        for (int i = 0; i < kGameCount; ++i) { ready[i] = (mask.load() >> i) & 1; any_ready = any_ready || ready[i]; }
+      }
     }
 
     if (launching) {

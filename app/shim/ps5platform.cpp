@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -267,6 +268,32 @@ void dbg_forward_log(const char* text, size_t len) {
   g_dbg_mutex.unlock();
 }
 
+std::deque<std::string> g_log_q;  // lines waiting for the file; guarded by g_log_mutex
+std::condition_variable g_log_cv;
+bool g_log_writer = false;
+unsigned g_log_dropped = 0;
+
+void log_writer() {
+  std::deque<std::string> batch;
+  for (;;) {
+    unsigned dropped;
+    {
+      std::unique_lock<std::mutex> lock(g_log_mutex);
+      g_log_cv.wait(lock, [] { return !g_log_q.empty(); });
+      batch.swap(g_log_q);
+      dropped = g_log_dropped;
+      g_log_dropped = 0;
+    }
+    for (const std::string& l : batch) {
+      std::fwrite(l.data(), 1, l.size(), g_log_file);
+      std::fputc('\n', g_log_file);
+    }
+    if (dropped) std::fprintf(g_log_file, "log: %u lines dropped (disk too slow)\n", dropped);
+    std::fflush(g_log_file);
+    batch.clear();
+  }
+}
+
 void log_line(const char* text, size_t len) {
   std::lock_guard<std::mutex> lock(g_log_mutex);
   log_open();
@@ -274,9 +301,15 @@ void log_line(const char* text, size_t len) {
   dbg_forward_log(text, len);
   if (g_log_sock >= 0 && len) sendto(g_log_sock, text, len, 0, reinterpret_cast<sockaddr*>(&g_log_dst), sizeof g_log_dst);
   if (g_log_file) {
-    std::fwrite(text, 1, len, g_log_file);
-    std::fputc('\n', g_log_file);
-    std::fflush(g_log_file);
+    // the file write happens on its own thread: under heavy disk load (a game install) fwrite/fflush took seconds, and
+    // every thread that logs (the launcher's render loop too) stalled with it
+    if (g_log_q.size() < 8192) g_log_q.emplace_back(text, len);
+    else ++g_log_dropped;
+    if (!g_log_writer) {
+      g_log_writer = true;
+      std::thread(log_writer).detach();
+    }
+    g_log_cv.notify_one();
   }
 }
 }  // namespace

@@ -17,6 +17,7 @@ extern "C" const char* ps5_import_stage() { return "idle"; }
 extern "C" int ps5_import_stage_id() { return 0; }
 extern "C" int ps5_import_stage_percent() { return -1; }
 extern "C" void ps5_import_cancel() {}
+extern "C" bool ps5sdl_game_active() { return false; }
 extern "C" const char* ps5_import_reason() { return ""; }
 extern "C" const char* ps5_iso_probe(const char*, char*, char*, char*) { return "notiso"; }
 extern "C" void ps5_web_start(int, const char*);
