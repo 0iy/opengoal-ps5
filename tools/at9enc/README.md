@@ -18,7 +18,7 @@ precision.
 ## PS5 home screen: use `--fps1`
 
 The encoder lets a frame use what earlier frames of its superframe left over, so frames inside a superframe differ in
-size. The PS5 home screen music player reads frame i at i * 128 bytes: with 4 frames per superframe it played only every
+size. The PS5 home screen music sounded choppy and sped up with 4 frames per superframe; most likely its player reads frame i at i * 128 bytes and so decoded only every
 first frame correctly (choppy, sped-up sound). `--fps1` writes one frame per superframe (block_align 128, superframe
 index 0 in the codec config), so every reader sees the same frames:
 
