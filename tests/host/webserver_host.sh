@@ -5,6 +5,7 @@ R=$(cd "$(dirname "$0")/../.." && pwd); T=$(mktemp -d); cd "$T"   # R = reposito
 sed "s#/data/opengoal#$T/og#g" "$R/app/shim/webserver.cpp" > ws.cpp
 cat > stub.cpp <<'EOF'
 #include <cstdarg>
+#include <cstdio>
 #include <cstring>
 #include <atomic>
 #include <unistd.h>
@@ -20,6 +21,7 @@ extern "C" int ps5_import_stage_percent() { return 50; }
 extern "C" void ps5_import_cancel() { cx = true; }
 extern "C" bool ps5sdl_game_active() { return false; }
 extern "C" unsigned ps5sdl_slow_frames() { return 0; }
+extern "C" std::FILE* __real_fopen(const char* p, const char* m) { return std::fopen(p, m); }  // the console links with --wrap=fopen
 extern "C" const char* ps5_import_reason() { return cx ? "cancelled" : ""; }
 extern "C" const char* ps5_iso_probe(const char*, char* s, char* g, char* r) { strcpy(s, "SCUS-97265"); strcpy(g, "jak2"); strcpy(r, "NTSC-U"); return nullptr; }
 extern "C" void ps5_web_start(int, const char*);

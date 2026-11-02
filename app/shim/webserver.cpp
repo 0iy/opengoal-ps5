@@ -345,23 +345,52 @@ void* rm_thread(void* a) {
 // Writes the unpacked files below `root`. Replace mode writes straight to the final name (the whole directory is renamed at the
 // end); add mode writes <name>.part and renames per file, so a game that is already playable never sees a half file.
 // Connection to the ogwriter payload (payloads/ogwriter.c, 127.0.0.1:9098): the console throttles the disk writes of this process
-// to ~2 MB/s after ~1.3 GB, the writer process keeps ~250 MB/s. Without the writer the sink writes itself.
+// to ~2 MB/s after ~1.3 GB, the writer process keeps ~250 MB/s. Not running: the app sends its copy of the payload to the ELF loader
+// (127.0.0.1:9021) and connects again; without a loader the app writes itself.
+std::atomic<long long> g_writer_tried{-100000};  // last start attempt (ms): one try per 30 s, a missing loader costs nothing per chunk
 struct Writer {
   int s = -1;
-  bool connect_local() {
+  bool try_connect() {
     s = socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in a{};
     a.sin_family = AF_INET; a.sin_port = htons(9098); a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    if (s >= 0 && connect(s, (sockaddr*)&a, sizeof a) == 0) {
+    if (s >= 0 && connect(s, (sockaddr*)&a, sizeof a) == 0) return true;
+    if (s >= 0) close(s);
+    s = -1;
+    return false;
+  }
+  static void launch() {
+    FILE* f = std::fopen("/data/homebrew/LAPY77001/ogwriter.elf", "rb");
+    if (!f) { ps5_log("install: writer: ogwriter.elf missing in the app folder"); return; }
+    std::vector<char> elf(1 << 20);
+    elf.resize(std::fread(elf.data(), 1, elf.size(), f));
+    std::fclose(f);
+    const int l = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in a{};
+    a.sin_family = AF_INET; a.sin_port = htons(9021); a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    bool sent = l >= 0 && connect(l, (sockaddr*)&a, sizeof a) == 0;
+    for (size_t off = 0; sent && off < elf.size();) {
+      const ssize_t w = send(l, elf.data() + off, elf.size() - off, 0);
+      if (w <= 0) sent = false; else off += size_t(w);
+    }
+    if (l >= 0) close(l);
+    ps5_log("install: writer: %s", sent ? "sent ogwriter.elf to the ELF loader" : "no ELF loader on 127.0.0.1:9021");
+  }
+  bool connect_local() {
+    bool ok = try_connect();
+    const long long now = mono_ms_ws();
+    if (!ok && now - g_writer_tried.load() > 30000) {
+      g_writer_tried = now;
+      launch();
+      for (int i = 0; i < 20 && !ok; ++i) { usleep(100000); ok = try_connect(); }
+    }
+    if (ok) {
       int one = 1;
       setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
       timeval tv{30, 0};
       setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-      return true;
     }
-    if (s >= 0) close(s);
-    s = -1;
-    return false;
+    return ok;
   }
   ~Writer() { if (s >= 0) close(s); }
   bool put(const void* p, size_t n) {
@@ -381,9 +410,13 @@ struct Writer {
     }
     return v;
   }
-  int op(char o, const char* p, uint32_t n) {  // 'O' and 'W'; 'O' waits for the answer
+  int op(char o, const void* p, uint32_t n) {  // 'O'/'U'/'R' wait for the answer, 'W'/'S' do not
     if (!put(&o, 1) || !put(&n, 4) || !put(p, n)) return EPIPE;
-    return o == 'O' ? answer() : 0;
+    return o == 'O' || o == 'U' || o == 'R' ? answer() : 0;
+  }
+  int close_file() {
+    const char c = 'C';
+    return put(&c, 1) ? answer() : EPIPE;
   }
 };
 
@@ -452,8 +485,7 @@ struct FsSink : ps5inst::Sink {
     const long long tc = mono_ms_ws();
     int r = 0;
     if (remote) {
-      const char c = 'C';
-      const int e = wr.put(&c, 1) ? wr.answer() : EPIPE;
+      const int e = wr.close_file();
       if (e) { errno = e; r = -1; }
     } else {
       r = close(fd);
@@ -572,6 +604,7 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
   int eno = 0;
   std::string where;  // "<step> <path>" of the failing filesystem call
   uint64_t files = 0;
+  bool used_writer = false;
   {
     mkdir_p(base.c_str());
     if (!add) rm_rf(stage_dir);
@@ -581,6 +614,7 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
       ps5_log("install: %s cannot create %s: errno %d (%s)", game.c_str(), stage_dir.c_str(), eno, strerror(eno));
     }
     FsSink sink(stage_dir, add);
+    used_writer = sink.remote;
     std::unique_ptr<ps5inst::Receiver> rx(new ps5inst::Receiver(&sink, total));  // ~130 KB of tables: heap, the thread stack is small
     unsigned long long throttled = 0;
     long long tq0 = 0, tadj = 0;
@@ -683,7 +717,8 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
           (long)time(nullptr) - g.t0.load());
   char b[640];
   if (key.empty()) {
-    std::snprintf(b, sizeof b, "{\"ok\":true,\"files\":%llu,\"bytes\":%llu,\"mode\":\"%s\"}", (unsigned long long)files, total, add ? "add" : "replace");
+    std::snprintf(b, sizeof b, "{\"ok\":true,\"files\":%llu,\"bytes\":%llu,\"mode\":\"%s\",\"writer\":\"%s\"}", (unsigned long long)files, total,
+                  add ? "add" : "replace", used_writer ? "payload" : "app");
     reply(fd, 200, J, b, false);
   } else {
     for (char& c : where) if (c == '"' || c == '\\' || (unsigned char)c < 32) c = '\'';
@@ -843,15 +878,24 @@ void* serve(void* arg) {
         GameSt& g = g_g[gi];
         unsigned long long off = strtoull(query_value(query, "off").c_str(), nullptr, 10);
         if (g.phase.load() != UPLOADING) { respond(fd, 409, "text/plain", "no upload in progress", false); goto done; }
-        int out = open(path_of(game, ".part").c_str(), O_WRONLY, 0666);  // created by /api/begin
+        // the chunks go through the writer payload too (an ISO is 4 to 8 GB, far past the ~1.3 GB the console lets the app write fast)
+        Writer wr;
+        const std::string part = path_of(game, ".part");
+        const bool remote = wr.connect_local() && wr.op('U', part.data(), uint32_t(part.size())) == 0;
+        int out = remote ? 0 : open(part.c_str(), O_WRONLY, 0666);  // created by /api/begin
         if (out < 0) { respond(fd, 400, "text/plain", "cannot open file", false); goto done; }
+        auto put_at = [&](const char* p, size_t n, unsigned long long at) {
+          if (!remote) return pwrite(out, p, n, off_t(at)) == ssize_t(n);
+          const uint64_t o = at;
+          return wr.op('S', &o, 8) == 0 && wr.op('W', p, uint32_t(n)) == 0;
+        };
         const unsigned long long total = g.total.load(), chunk = g.chunk.load();
         const unsigned long long want_len = off < total ? std::min(chunk, total - off) : 0;
         unsigned long long left = clen, pos = off, written = 0;
         bool ok = off < total && off + clen <= total;
         if (ok && !pending.empty()) {  // body bytes that arrived with the head
           size_t n = pending.size() < left ? pending.size() : size_t(left);
-          if (pwrite(out, pending.data(), n, off_t(pos)) != ssize_t(n)) ok = false;
+          if (!put_at(pending.data(), n, pos)) ok = false;
           pos += n; left -= n; written += n; g.bytes += n;
           pending.erase(0, n);
         }
@@ -860,11 +904,11 @@ void* serve(void* arg) {
           size_t want = left < buf.size() ? size_t(left) : buf.size();
           ssize_t r = recv(fd, buf.data(), want, 0);
           if (r <= 0) { ok = false; break; }
-          if (pwrite(out, buf.data(), size_t(r), off_t(pos)) != r) { ok = false; break; }
+          if (!put_at(buf.data(), size_t(r), pos)) { ok = false; break; }
           pos += size_t(r); left -= size_t(r); written += size_t(r); g.bytes += size_t(r);
           g.last_io = (long)time(nullptr);
         }
-        close(out);
+        if (remote) { if (wr.close_file()) ok = false; } else close(out);
         if (!ok) {
           g.bytes -= std::min<unsigned long long>(written, g.bytes.load());  // the half chunk is sent again
           goto done;
@@ -1134,4 +1178,24 @@ extern "C" bool ps5_install_notice_state(int* game, int* pct, int* kbps) {
   *pct = t ? int(b * 100 / t) : 0;
   *kbps = g_inst_kbps.load();
   return true;
+}
+
+// fopen of a new file below /data/opengoal/jak1|jak2|jak3|proj_jak* (linked with --wrap=fopen): the import on the console (extractor, decompiler,
+// ISO copies; several GB) writes through the writer payload too, because the console throttles this process after ~1.3 GB.
+// Everything else, and every fopen when the writer cannot be reached, goes to the real fopen.
+extern "C" FILE* __real_fopen(const char* path, const char* mode);
+extern "C" FILE* __wrap_fopen(const char* path, const char* mode) {
+  // game folders and the console import's project folders (proj_jak1 ..., extractor + decompiler output)
+  const bool game_dir = path && (!strncmp(path, "/data/opengoal/jak1/", 20) || !strncmp(path, "/data/opengoal/jak2/", 20) ||
+                                 !strncmp(path, "/data/opengoal/jak3/", 20) || !strncmp(path, "/data/opengoal/proj_jak", 23));
+  if (!game_dir || !mode || mode[0] != 'w' || strchr(mode, '+')) return __real_fopen(path, mode);
+  // writer stream mode ('R'): the socket itself becomes the FILE*, fclose ends the file. No fseek on these (the import writes
+  // sequentially); a failure on the console side shows up as a failed fwrite/fclose.
+  Writer w;
+  if (!w.connect_local() || w.op('R', path, uint32_t(strlen(path)))) return __real_fopen(path, mode);
+  FILE* fp = fdopen(w.s, "wb");
+  if (!fp) return __real_fopen(path, mode);
+  w.s = -1;  // owned by the FILE now
+  setvbuf(fp, nullptr, _IOFBF, 64 << 10);  // 1 MB per FILE ran the app heap out of memory (the extractor keeps many files open)
+  return fp;
 }

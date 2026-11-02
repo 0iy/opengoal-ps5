@@ -6,6 +6,7 @@ H=$(cd "$(dirname "$0")" && pwd); R=$(cd "$H/../.." && pwd); T=$(mktemp -d); cd 
 sed -e "s#/data/opengoal#$T/og#g" -e "s#/data/homebrew#$T/hb#g" "$R/app/shim/webserver.cpp" > ws.cpp
 cat > stub.cpp <<'EOF'
 #include <cstdarg>
+#include <cstdio>
 #include <cstring>
 #include <unistd.h>
 void ps5_log(const char*, ...) {}
@@ -19,6 +20,7 @@ extern "C" int ps5_import_stage_percent() { return -1; }
 extern "C" void ps5_import_cancel() {}
 extern "C" bool ps5sdl_game_active() { return false; }
 extern "C" unsigned ps5sdl_slow_frames() { return 0; }
+extern "C" std::FILE* __real_fopen(const char* p, const char* m) { return std::fopen(p, m); }  // the console links with --wrap=fopen
 extern "C" const char* ps5_import_reason() { return ""; }
 extern "C" const char* ps5_iso_probe(const char*, char*, char*, char*) { return "notiso"; }
 extern "C" void ps5_web_start(int, const char*);

@@ -132,7 +132,9 @@ PUT /api/install?game=jak1&total=RAW_TAR_BYTES&mode=replace|add&serial=SCES-5036
 * the file data goes through the **writer payload** (`payloads/ogwriter.c`, `127.0.0.1:9098`): the console throttles the disk writes of the app process to
   about 2 MB/s once it has written about 1.3 GB (measured 240 MB/s -> 2 MB/s; `fsync`, `O_DIRECT` and `fadvise` do not help, the budget recovers over minutes),
   while another process keeps about 250 MB/s at the same time. `pc_import` sends `ogwriter.elf` to the ELF loader (9021) before every upload; the app connects to it
-  per install and falls back to writing itself (slow for big games) when it is not running. Jak 3 (3.9 GB + 1.5 GB voices): about 25 min before, 64 s with the writer;
+  per install; when it is not running the app sends its own copy (`/data/homebrew/LAPY77001/ogwriter.elf`) to the loader on `127.0.0.1:9021` and
+  falls back to writing itself (slow for big games) without a loader. The web page upload (`/api/chunk`) and the console import (every new file below
+  `/data/opengoal/jak*` and `proj_jak*`, through a `--wrap=fopen` hook) write through the same writer. Jak 3 (3.9 GB + 1.5 GB voices): about 25 min before, 64 s with the writer;
 * no `statvfs` (it crashes on the PS5 SDK, see the existing comment); a full disk shows up as `ENOSPC` -> `no_space`. No `fsync`: a power loss during the final seconds can leave a partial game that still carries `.ps5ready`.
 
 Status integration (no change to `launcher.cpp`, `ps5import.h` unchanged): while installing, `ps5_game_status` reports `phase = 4 (importing)`, `stage = 0` (the launcher labels that

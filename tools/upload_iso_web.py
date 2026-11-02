@@ -11,6 +11,7 @@ import os
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -37,7 +38,7 @@ def main():
     base = f"http://{a.host}:{a.port}"
     size = os.path.getsize(a.iso)
     chunk = a.chunk << 20
-    fp = f"{size}-{int(os.path.getmtime(a.iso))}-{os.path.basename(a.iso)}"
+    fp = urllib.parse.quote(f"{size}-{int(os.path.getmtime(a.iso))}-{os.path.basename(a.iso)}", safe="")[:180]  # as the web page does
     st, body = call(f"{base}/api/begin?game={a.game}&total={size}&chunk={chunk}&fp={fp}", "POST", b"")
     print("begin", st, body[:200])
     if st != 200:

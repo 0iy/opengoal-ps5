@@ -9,7 +9,7 @@ Small ELFs that are sent to the console's ELF loader (port 9021). The prebuilt `
 | `scan` | installer (`scan.elf` in the release bundle) | asks ShadowMountPlus for an immediate scan so a newly installed app registers |
 | `keepalive` | developers | resets the auto power-down timer and the screen saver every 20 s, heartbeat on UDP 9999 |
 | `ogagent` | installer (one-command setup) | HTTP agent on TCP 9099: copies files into `/data/homebrew/LAPY77001/` and `/data/opengoal/`, reads logs, launches and kills the app; needs a patched token (see below) |
-| `ogwriter` | `pc_import.py` (sent before every upload) | writes the files of a PC import for the app on `127.0.0.1:9098`, only below `/data/opengoal/`; the console throttles the app's own disk writes to ~2 MB/s after ~1.3 GB, this process is not throttled; exits after 120 s without a client |
+| `ogwriter` | the app (from its own folder) and `pc_import.py` send it to the ELF loader | writes the files of an install (PC import, web page upload, console import) for the app on `127.0.0.1:9098`, only below `/data/opengoal/`; the console throttles the app's own disk writes to ~2 MB/s after ~1.3 GB, this process is not throttled; exits after 120 s without a client |
 | `klog_dump.c` | developers | copies the kernel log to UDP 9999 (`-DALL` for everything, otherwise remote-play and network lines); no prebuilt ELF |
 | `kstuff_state.c` | developers | reads kstuff's enable flag (read-only); no prebuilt ELF |
 

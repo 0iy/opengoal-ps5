@@ -11,6 +11,7 @@ cp -r ~/ogapp/dist/LAPY77001 "$out/app/LAPY77001"
 rm -f "$out/app/LAPY77001/sce_sys/snd0.at9"  # hover music is derived from a copyrighted track: never ship it
 cp "$root/VERSION" "$out/VERSION"; cp "$root/VERSION" "$out/app/LAPY77001/VERSION"  # the app reports it in /api/info; the setup compares it to decide on an update
 cp "$root/payloads/scan.elf" "$out/tools/"
+cp "$root/payloads/ogwriter.elf" "$out/app/LAPY77001/"  # the app starts it itself for installs (also for uploads from the web page)
 cp -r "$here"/release_template/* "$out/"
 chmod +x "$out/install.sh"
 # one-liner GUI: gui/, pc_import.py and the bootstrap scripts travel inside the bundle too

@@ -239,6 +239,43 @@ def anchor_report(text, old):
     return f"first anchor line {first!r} found at line(s) {hits[:5] if hits else 'NONE (removed/renamed upstream?)'}"
 
 
+# --- ISO unpack in 8 MB pieces: upstream reads every disc file into memory whole; Jak 3's VAGWAD.INT (about 1 GB) does not fit the
+# app heap and the console import crashed in operator new (2026-11-02). Same bytes, same hash (streaming XXH64)
+patch(
+    rp("common/util/read_iso_file.cpp"),
+    """    std::vector<u8> buffer(entry.size);
+    if (fseek_64(fp, entry.offset_in_file, SEEK_SET)) {""",
+    """#if defined(__ps5__)
+    if (fseek_64(fp, entry.offset_in_file, SEEK_SET)) {
+      ASSERT_MSG(false, "Failed to fseek iso when unpacking");
+    }
+    {
+      std::vector<u8> piece(std::min<size_t>(entry.size, 8u << 20));
+      FILE* out = fopen(path_to_entry.string().c_str(), "wb");
+      ASSERT_MSG(out, "Failed to open the output file when unpacking");
+      XXH64_state_t* st = XXH64_createState();  // the state type is opaque in this header
+      XXH64_reset(st, 0);
+      for (size_t left = entry.size; left;) {
+        const size_t n = std::min(left, piece.size());
+        if (fread(piece.data(), 1, n, fp) != n) {
+          lg::error("did not read {} bytes in entry: {}", n, patched_name);
+          ASSERT_MSG(false, "Failed to fread iso entry when unpacking");
+        }
+        ASSERT_MSG(fwrite(piece.data(), 1, n, out) == n, "Failed to write the output file when unpacking");
+        if (iso.shouldHash) XXH64_update(st, piece.data(), n);
+        left -= n;
+      }
+      ASSERT_MSG(fclose(out) == 0, "Failed to close the output file when unpacking");
+      iso.files_extracted++;
+      if (iso.shouldHash) iso.hashes.push_back(XXH64_digest(st));
+      XXH64_freeState(st);
+      return;  // __ps5__
+    }
+#endif
+    std::vector<u8> buffer(entry.size);
+    if (fseek_64(fp, entry.offset_in_file, SEEK_SET)) {""",
+)
+
 def main():
     changed = patch_linux_abi() + patch_rgb_textures()
     failed = 0

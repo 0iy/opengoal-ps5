@@ -21,7 +21,7 @@ RELEASE = "v0.3.9"         # == engine/ports/upstream.lock commit b6c8430 (verif
 BASE = "https://github.com/open-goal/jak-project/releases/download/" + RELEASE + "/"
 # our toolchain pack (patched goal_src, game assets with the PS5 menu texts, precompiled game code): a release asset, pinned by hash
 PACK_NAME = "opengoal-ps5-pack.tgz"
-PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.3.0/" + PACK_NAME
+PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.3.1/" + PACK_NAME
 PACK_SIZE = 19616941
 PACK_SHA256 = "93abce32754fa0e22e7182ebf5fc77ce925f55c26ec26268701dffb9d4394541"
 TOOLS = {  # sizes/sha256 from the GitHub release API digests
@@ -1038,7 +1038,9 @@ def main(argv=None):
                 nfiles, total >> 20, wire >> 20, sum(e.size for e in extra) >> 20), force=True, raw_bytes=total, wire_bytes=wire)
         else:
             n2 = tar_total(extra) if extra else 0
-            upload(rep, a.ps5, a.port, game, core, total, a.jobs, "replace", dict(meta, base=0, all=total + n2))
+            j = upload(rep, a.ps5, a.port, game, core, total, a.jobs, "replace", dict(meta, base=0, all=total + n2))
+            if j.get("writer") == "app":  # older app (no field) says nothing
+                rep.emit("install", 100, "slow install: the console wrote the files without the writer payload (no ELF loader on port 9021?); start the ELF loader for 20x faster imports", force=True, warning="no_writer")
             rep.emit("install", 100, "playable", force=True, playable=True)
             if extra:
                 rep.emit("upload", 0, "voice languages (game is already playable)", force=True)

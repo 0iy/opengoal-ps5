@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Payload: file writer for the PC import. The console throttles the disk writes of the app process to ~2 MB/s after ~1.3 GB, while
 // another process keeps ~250 MB/s (measured 2026-11-02). The app therefore hands the file data of an install to this process.
-// pc_import sends it to the ELF loader (port 9021) before every upload; a second copy finds the port taken and exits.
+// The app sends /data/homebrew/LAPY77001/ogwriter.elf to the ELF loader (127.0.0.1:9021) when it needs it, pc_import sends it before every
+// upload too; a second copy finds the port taken and exits.
 //
 // Listens on 127.0.0.1:9098 only (the app on the same console). Writes only below /data/opengoal/. Exits after 120 s without a client.
 // Protocol, little endian, one file at a time per connection:
 //   'O' u32 len, path   open (create, truncate)    -> i32 errno (0 = ok)
+//   'U' u32 len, path   open an existing file      -> i32 errno (0 = ok)  (browser upload: chunks at offsets)
+//   'S' u32 8, u64 off  seek                       -> no answer; a failure is kept and returned by 'C'
 //   'W' u32 len, data   append                     -> no answer; a failure is kept and returned by 'C'
 //   'C'                 close                      -> i32 errno (0 = ok)
+//   'R' u32 len, path   open (create, truncate)    -> i32 errno; then every further byte of the connection is file data until the
+//                                                     client closes (the app's fopen hook hands the socket out as a FILE*)
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -65,8 +70,8 @@ static void* conn_thread(void* arg) {
       err = 0;
       continue;
     }
-    if ((op != 'O' && op != 'W') || recv_all(fd, &len, 4) || len > MAX_CHUNK || recv_all(fd, buf, len)) break;
-    if (op == 'O') {
+    if ((op != 'O' && op != 'U' && op != 'W' && op != 'S' && op != 'R') || recv_all(fd, &len, 4) || len > MAX_CHUNK || recv_all(fd, buf, len)) break;
+    if (op == 'O' || op == 'U' || op == 'R') {
       if (out >= 0) close(out);
       err = 0;
       out = -1;
@@ -74,9 +79,25 @@ static void* conn_thread(void* arg) {
       else {
         buf[len] = 0;
         if (!path_ok(buf)) err = EPERM;
-        else if ((out = open(buf, O_WRONLY | O_CREAT | O_TRUNC, 0644)) < 0) err = errno;
+        else if ((out = open(buf, op != 'U' ? O_WRONLY | O_CREAT | O_TRUNC : O_WRONLY, 0644)) < 0) err = errno;
       }
       if (send_i32(fd, err)) break;
+      if (op == 'R') {  // raw stream to the end of the connection
+        for (ssize_t r; out >= 0 && (r = recv(fd, buf, MAX_CHUNK, 0)) > 0;) {
+          g_last = mono_s();
+          for (char* p = buf; r > 0;) {
+            ssize_t w = write(out, p, (size_t)r);
+            if (w <= 0) { close(out); out = -1; break; }  // the client sees the closed connection on its next write
+            p += w; r -= w;
+          }
+        }
+        break;
+      }
+    } else if (op == 'S') {
+      uint64_t off = 0;
+      memcpy(&off, buf, len == 8 ? 8 : 0);
+      if (len != 8) err = EINVAL;
+      else if (out >= 0 && !err && lseek(out, (off_t)off, SEEK_SET) < 0) err = errno;
     } else if (out >= 0 && !err) {
       for (char* p = buf; len && !err;) {
         ssize_t w = write(out, p, len);

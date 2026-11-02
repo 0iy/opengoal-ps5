@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1 (2026-11-02)
+
+### Changed
+- The app starts the writer helper itself (it ships in the app folder and goes to the ELF loader on the console), so imports from the web page are fast too: the ISO upload kept about 67 MB/s past the point where it used to fall to 2 MB/s, and unpacking the disc on the console no longer stops at about 23 %
+- pc_import says so when the console had to write without the helper (no ELF loader), instead of being slow without a word
+
+### Fixed
+- Console import (web page) unpacks big disc files in 8 MB pieces instead of loading each file into memory whole: Jak 3's 1 GB music file ran the app out of memory
+
+### Known issue
+- Importing Jak 3 through the web page still stops while the console analyses the game data (out of memory). Use the PC import (`install` / the import window) for Jak 3; it builds that part on the PC
+
 ## 0.3.0 (2026-11-02)
 
 ### Changed
