@@ -13,7 +13,7 @@ import argparse, collections, hashlib, io, json, os, platform, re, shutil, socke
 import threading, time, traceback, urllib.request, zipfile, zlib
 from concurrent.futures import ThreadPoolExecutor
 
-DATA_FORMAT = 2            # 2: game code from upstream v0.3.9 with the PS5 menus. layout of an installed game. Raise it (here and in ps5_setup.py) when a new app cannot read games installed by an older import
+DATA_FORMAT = 3            # 2: game code from upstream v0.3.9 with the PS5 menus; 3: back-to-launcher entry, system language. layout of an installed game. Raise it (here and in ps5_setup.py) when a new app cannot read games installed by an older import
 MAGIC = b"PS5IMP01"
 FRAME = 4 << 20            # raw bytes per frame
 C_RAW, C_DEFLATE, C_END = 0, 1, 255
@@ -21,9 +21,9 @@ RELEASE = "v0.3.9"         # == engine/ports/upstream.lock commit b6c8430 (verif
 BASE = "https://github.com/open-goal/jak-project/releases/download/" + RELEASE + "/"
 # our toolchain pack (patched goal_src, game assets with the PS5 menu texts, precompiled game code): a release asset, pinned by hash
 PACK_NAME = "opengoal-ps5-pack.tgz"
-PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.2.0/" + PACK_NAME
-PACK_SIZE = 19615823
-PACK_SHA256 = "1275e167fe52dc9f9b9baedd6ff6e70b06abe9600d899e2948644231b7fb4ee9"
+PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.2.1/" + PACK_NAME
+PACK_SIZE = 19616941
+PACK_SHA256 = "93abce32754fa0e22e7182ebf5fc77ce925f55c26ec26268701dffb9d4394541"
 TOOLS = {  # sizes/sha256 from the GitHub release API digests
     "windows": ("opengoal-windows-v0.3.9.zip", 42598650, "d2000d4d934313541ac38cb1a801838dac1447b623b4fae58638fd319864a162"),
     "linux": ("opengoal-linux-v0.3.9.tar.gz", 43512280, "acacd03896e09902503fee2ac98e8cb72228cfd221d8ff96b3e88a98ada04ee1"),

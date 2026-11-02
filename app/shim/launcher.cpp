@@ -109,7 +109,8 @@ void ps5_settings_load() {
     else if (std::sscanf(line, "upscale=%d", &v) == 1) g_settings.upscale = std::clamp(v, 0, 4);
     else if (std::sscanf(line, "sharpness=%d", &v) == 1) g_settings.sharpness = std::clamp(v, 0, 10);
     else if (std::sscanf(line, "area=%d", &v) == 1) g_settings.area = std::clamp(v, 90, 100);
-    else if (std::sscanf(line, "perf=%d", &v) == 1) g_settings.perf = v ? 1 : 0;
+    else if (std::sscanf(line, "perf=%d", &v) == 1) g_settings.perf = std::clamp(v, 0, 2);
+    else if (std::sscanf(line, "notice=%d", &v) == 1) g_settings.notice = v ? 1 : 0;
   }
   std::fclose(f);
 }
@@ -120,9 +121,9 @@ void ps5_settings_save() {
     ps5_log("launcher: cannot write %s", kConfigPath);
     return;
   }
-  std::fprintf(f, "resolution=%d\nrefresh=%d\nlast_game=%d\nlang=%d\nmerge=%d\nasync=%d\nlazymips=%d\nupscale=%d\nsharpness=%d\narea=%d\nperf=%d\n",
+  std::fprintf(f, "resolution=%d\nrefresh=%d\nlast_game=%d\nlang=%d\nmerge=%d\nasync=%d\nlazymips=%d\nupscale=%d\nsharpness=%d\narea=%d\nperf=%d\nnotice=%d\n",
                g_settings.resolution, g_settings.refresh, g_settings.last_game, g_settings.lang, g_settings.merge,
-               g_settings.async_md, g_settings.lazy_mips, g_settings.upscale, g_settings.sharpness, g_settings.area, g_settings.perf);
+               g_settings.async_md, g_settings.lazy_mips, g_settings.upscale, g_settings.sharpness, g_settings.area, g_settings.perf, g_settings.notice);
   std::fclose(f);
   // flag files read by appmain at the next start: present = non-default behaviour
   auto flag = [](const char* name, bool on) {
@@ -148,7 +149,7 @@ extern "C" void ps5_ingame_set(int id, int v) {
   if (id == 0) s.upscale = std::clamp(v, 0, 4);
   else if (id == 1) s.sharpness = std::clamp(v, 0, 10);
   else if (id == 2) s.area = std::clamp(v, 90, 100);
-  else if (id == 3) s.perf = v ? 1 : 0;
+  else if (id == 3) s.perf = v ? (s.perf ? s.perf : 2) : 0;  // the game menu has on/off; on keeps the launcher's level
   ps5_settings_save();
 }
 
@@ -271,7 +272,7 @@ const char* tr(Str s) { return kText[g_settings.lang ? 1 : 0][s]; }
 const char* L(const char* en, const char* de) { return g_settings.lang ? de : en; }
 
 // Settings rows. Window mode, frame rate and V-Sync are not offered here: the games' own menus show them locked (engine/patch_ps5_ingame_settings.py).
-enum SettingId { SET_RES, SET_MERGE, SET_ASYNC, SET_LAZYMIPS, SET_FSR, SET_SHARP, SET_AREA, SET_PERF, SET_LANG, SET_ADD, SET_COUNT };
+enum SettingId { SET_RES, SET_MERGE, SET_ASYNC, SET_LAZYMIPS, SET_FSR, SET_SHARP, SET_AREA, SET_PERF, SET_NOTICE, SET_LANG, SET_ADD, SET_COUNT };
 struct SettingRow {
   const char* name;
   std::string value;
@@ -302,9 +303,14 @@ void build_rows(SettingRow* r) {
   r[SET_AREA] = {L("Display area", "Bildbereich"), std::to_string(g_settings.area) + "%", true,
                  L("Shrinks the picture if the TV cuts off its edges. Applies at once.",
                    "Verkleinert das Bild, wenn der Fernseher die R\xc3\xa4nder abschneidet. Gilt sofort.")};
-  r[SET_PERF] = {L("Performance overlay", "Leistungsanzeige"), onoff(g_settings.perf), true,
-                 L("Frame rate, frame time, CPU time of the renderer and GPU wait in the top left corner while playing.",
-                   "Bildrate, Frame-Zeit, CPU-Zeit des Renderers und GPU-Wartezeit oben links im Spiel.")};
+  static const char* const kPerfEn[] = {"Off", "Frame rate", "Full"};
+  static const char* const kPerfDe[] = {"Aus", "Bildrate", "Voll"};
+  r[SET_PERF] = {L("Performance overlay", "Leistungsanzeige"), g_settings.lang ? kPerfDe[g_settings.perf] : kPerfEn[g_settings.perf], true,
+                 L("Top left while playing. Frame rate: fps and frame time. Full: also CPU time of the renderer and GPU wait.",
+                   "Oben links im Spiel. Bildrate: fps und Frame-Zeit. Voll: dazu CPU-Zeit des Renderers und GPU-Wartezeit.")};
+  r[SET_NOTICE] = {L("Install notice", "Installationshinweis"), onoff(g_settings.notice), true,
+                   L("Top left while playing and another game installs: progress, speed, and that quitting speeds it up.",
+                     "Oben links im Spiel, w\xc3\xa4hrend ein anderes Spiel installiert: Fortschritt, Tempo, Beenden macht es schneller.")};
   r[SET_LANG] = {L("Language", "Sprache"), g_settings.lang ? "Deutsch" : "English", true, L("Launcher language.", "Sprache des Launchers.")};
   r[SET_ADD] = {tr(S_ADD_ROW), ">", true, L("Open the page to add or re-add a game.", "Seite zum Hinzuf\xc3\xbc\x67\x65n eines Spiels \xc3\xb6\x66\x66nen.")};
 }
@@ -421,7 +427,7 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
   Screen scr;
   int sel = g_settings.last_game;
   int settings_sel = 0;
-  int focus = 0;  // main screen: 0 = Play, 1 = Display, 2 = Controls
+  int focus = 0;  // main screen: -1 = game list (sidebar), 0 = Play, 1 = Settings, 2 = Controls
   Textures tex = load_textures();
   std::string toast;
   double toast_until = 0;
@@ -496,19 +502,30 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
     } else if (!any_ready && scr.id != Screen::Import) {
       scr.id = Screen::Import;  // onboarding is mandatory
     } else if (scr.id == Screen::Main) {
-      // Left/Right (or L1/R1) always pick the game. Up/Down move between Play and the two buttons below it;
-      // on the lower row Left/Right switch between Settings and Controls.
-      if (in.pressed(PAD_L1) || (focus == 0 && f_left)) sel = (sel + kGameCount - 1) % kGameCount;
-      if (in.pressed(PAD_R1) || (focus == 0 && f_right)) sel = (sel + 1) % kGameCount;
-      if (f_down && focus == 0) focus = 1;
-      else if (f_up && focus != 0) focus = 0;
-      else if (focus != 0 && f_left) focus = 1;
-      else if (focus != 0 && f_right) focus = 2;
+      // D-pad / stick move a focus like a TV menu: the game list on the left (Up/Down pick the game), Play, and Settings /
+      // Controls below Play. Cross presses the focused item, Circle goes back to the game list. L1/R1 still switch the game.
+      if (in.pressed(PAD_L1)) sel = (sel + kGameCount - 1) % kGameCount;
+      if (in.pressed(PAD_R1)) sel = (sel + 1) % kGameCount;
+      bool press = confirm;
+      if (focus == -1) {
+        if (f_up) sel = (sel + kGameCount - 1) % kGameCount;
+        if (f_down) sel = (sel + 1) % kGameCount;
+        if (f_right || confirm) focus = 0;
+        press = false;
+      } else if (focus == 0) {
+        if (f_left) focus = -1;
+        else if (f_down) focus = 1;
+      } else {
+        if (f_up) focus = 0;
+        else if (f_left) focus = focus == 2 ? 1 : -1;
+        else if (f_right) focus = 2;
+      }
+      if (back) focus = -1;
       if (in.pressed(PAD_TRIANGLE) || in.pressed(PAD_OPTIONS)) { scr.id = Screen::Settings; settings_sel = SET_RES; }
       if (in.pressed(PAD_SQUARE)) scr.id = Screen::Controls;
-      if (confirm && focus == 1) { scr.id = Screen::Settings; settings_sel = SET_RES; }
-      else if (confirm && focus == 2) scr.id = Screen::Controls;
-      else if (confirm) {
+      if (press && focus == 1) { scr.id = Screen::Settings; settings_sel = SET_RES; }
+      else if (press && focus == 2) scr.id = Screen::Controls;
+      else if (press) {
         if (ready[sel] && ps5_import_state() == 1) {  // the extractor and the engine share process-wide state, so no Play while importing
           toast = tr(S_BUSY);
           toast_until = now + 4.0;
@@ -548,7 +565,8 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
           case SET_FSR: g_settings.upscale = (g_settings.upscale + 5 + dir) % 5; break;
           case SET_SHARP: g_settings.sharpness = std::clamp(g_settings.sharpness + dir, 0, 10); break;
           case SET_AREA: g_settings.area = std::clamp(g_settings.area + dir, 90, 100); break;
-          case SET_PERF: g_settings.perf = 1 - g_settings.perf; break;
+          case SET_PERF: g_settings.perf = (g_settings.perf + 3 + dir) % 3; break;
+          case SET_NOTICE: g_settings.notice = 1 - g_settings.notice; break;
           case SET_LANG: g_settings.lang = 1 - g_settings.lang; changed = false; break;
           case SET_ADD: scr.id = Screen::Import; changed = false; break;
           default: changed = false; break;
@@ -612,6 +630,7 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
                      ImVec2(sbw * 0.5f + lw * 0.5f, cy + lh * 0.5f), ImVec2(0, 0), ImVec2(1, 1), tint);
       }
       if (active) dl->AddRectFilled(ImVec2(0, cy - 38 * S), ImVec2(6 * S, cy + 38 * S), kOrange, 3 * S);
+      if (active && focus == -1) dl->AddRect(ImVec2(12 * S, cy - 70 * S), ImVec2(sbw - 12 * S, cy + 70 * S), kOrange, 10 * S, 0, 4 * S);
     }
     {  // cog
       const ImVec2 c(sbw * 0.5f, h - 100 * S);
@@ -672,8 +691,8 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
              L("on your phone or PC and drop your .iso of this game there.", "auf Handy oder PC und ziehe deine .iso dieses Spiels dorthin."));
       }
       text(dl, 26 * S, ImVec2(sbw + 40 * S, h - 62 * S), IM_COL32(210, 214, 224, 200),
-           L("Left / Right or L1 / R1: game     Cross: select     Triangle: settings     Square: controls",
-             "Links / Rechts oder L1 / R1: Spiel     Kreuz: ausw\xc3\xa4hlen     Dreieck: Einstellungen     Quadrat: Steuerung"));
+           L("Arrows: move     Cross: select     Circle: game list",
+             "Pfeile: bewegen     Kreuz: ausw\xc3\xa4hlen     Kreis: Spieleliste"));
     } else if (scr.id == Screen::Settings) {
       dl->AddRectFilled(ImVec2(sbw, 0), ImVec2(w, h), IM_COL32(8, 8, 10, 235));
       text(dl, 60 * S, ImVec2(sbw + 96 * S, 90 * S), IM_COL32(255, 255, 255, 255), L("Settings", "Einstellungen"));
@@ -1043,16 +1062,108 @@ extern "C" __attribute__((force_align_arg_pointer)) void ps5_loading_overlay(int
 // Own ImGui context (the engine has its own; the launcher's is gone after the hand-off), drawn on the render thread right
 // before the swap. Real values: frame rate and frame time, CPU time of the render thread, time the CPU waited for the GPU.
 extern "C" void ps5_driver_wait_sites(unsigned long long* ns, unsigned long long* n);
+extern "C" bool ps5_install_notice_state(int* game, int* pct, int* kbps);
+extern "C" bool ps5sdl_game_active();
+extern "C" int sceSystemServiceParamGetInt(int param_id, int* value);
+
+// install notice texts per PS5 system language (SCE language id): title (game, percent, MB/s), two hint lines.
+// Korean, Chinese and the rest fall back to English (the overlay font has no Hangul / Hanzi subset).
+struct NoticeText { int lang; const char* title; const char* l1; const char* l2; };
+static const NoticeText kNotice[] = {
+  {1, "%s is installing: %d %%  (throttled, %.1f MB/s)",
+   "The install runs slower while you play.",
+   "Quit the game to install up to 10x faster."},
+  {18, "%s is installing: %d %%  (throttled, %.1f MB/s)",
+   "The install runs slower while you play.",
+   "Quit the game to install up to 10x faster."},
+  {4, "%s wird installiert: %d %%  (gedrosselt, %.1f MB/s)",
+   "Die Installation l\xc3\xa4" "uft langsamer, solange du spielst.",
+   "Spiel beenden = Installation bis zu 10x schneller."},
+  {2, "Installation de %s : %d %%  (ralentie, %.1f Mo/s)",
+   "L'installation est plus lente pendant que vous jouez.",
+   "Quittez le jeu pour installer jusqu'\xc3\xa0" " 10x plus vite."},
+  {22, "Installation de %s : %d %%  (ralentie, %.1f Mo/s)",
+   "L'installation est plus lente pendant que vous jouez.",
+   "Quittez le jeu pour installer jusqu'\xc3\xa0" " 10x plus vite."},
+  {3, "Instalando %s: %d %%  (limitado, %.1f MB/s)",
+   "La instalaci\xc3\xb3" "n va m\xc3\xa1" "s lenta mientras juegas.",
+   "Sal del juego para instalar hasta 10 veces m\xc3\xa1" "s r\xc3\xa1" "pido."},
+  {20, "Instalando %s: %d %%  (limitado, %.1f MB/s)",
+   "La instalaci\xc3\xb3" "n va m\xc3\xa1" "s lenta mientras juegas.",
+   "Sal del juego para instalar hasta 10 veces m\xc3\xa1" "s r\xc3\xa1" "pido."},
+  {5, "Installazione di %s: %d %%  (limitata, %.1f MB/s)",
+   "L'installazione \xc3\xa8" " pi\xc3\xb9" " lenta mentre giochi.",
+   "Esci dal gioco per installare fino a 10 volte pi\xc3\xb9" " veloce."},
+  {6, "%s wordt ge\xc3\xaf" "nstalleerd: %d %%  (beperkt, %.1f MB/s)",
+   "De installatie gaat langzamer terwijl je speelt.",
+   "Sluit het spel af om tot 10x sneller te installeren."},
+  {7, "A instalar %s: %d %%  (limitado, %.1f MB/s)",
+   "A instala\xc3\xa7" "\xc3\xa3" "o \xc3\xa9" " mais lenta enquanto jogas.",
+   "Sai do jogo para instalar at\xc3\xa9" " 10x mais r\xc3\xa1" "pido."},
+  {17, "Instalando %s: %d %%  (limitado, %.1f MB/s)",
+   "A instala\xc3\xa7" "\xc3\xa3" "o fica mais lenta enquanto voc\xc3\xaa" " joga.",
+   "Feche o jogo para instalar at\xc3\xa9" " 10x mais r\xc3\xa1" "pido."},
+  {8, "\xd0\xa3" "\xd1\x81" "\xd1\x82" "\xd0\xb0" "\xd0\xbd" "\xd0\xbe" "\xd0\xb2" "\xd0\xba" "\xd0\xb0" " %s: %d %%  (%.1f \xd0\x9c" "\xd0\x91" "/\xd1\x81" ")",
+   "\xd0\x9f" "\xd0\xbe" "\xd0\xba" "\xd0\xb0" " \xd0\xb2" "\xd1\x8b" " \xd0\xb8" "\xd0\xb3" "\xd1\x80" "\xd0\xb0" "\xd0\xb5" "\xd1\x82" "\xd0\xb5" ", \xd1\x83" "\xd1\x81" "\xd1\x82" "\xd0\xb0" "\xd0\xbd" "\xd0\xbe" "\xd0\xb2" "\xd0\xba" "\xd0\xb0" " \xd0\xb8" "\xd0\xb4" "\xd0\xb5" "\xd1\x82" " \xd0\xbc" "\xd0\xb5" "\xd0\xb4" "\xd0\xbb" "\xd0\xb5" "\xd0\xbd" "\xd0\xbd" "\xd0\xb5" "\xd0\xb5" ".",
+   "\xd0\x92" "\xd1\x8b" "\xd0\xb9" "\xd0\xb4" "\xd0\xb8" "\xd1\x82" "\xd0\xb5" " \xd0\xb8" "\xd0\xb7" " \xd0\xb8" "\xd0\xb3" "\xd1\x80" "\xd1\x8b" ": \xd0\xb4" "\xd0\xbe" " 10 \xd1\x80" "\xd0\xb0" "\xd0\xb7" " \xd0\xb1" "\xd1\x8b" "\xd1\x81" "\xd1\x82" "\xd1\x80" "\xd0\xb5" "\xd0\xb5" "."},
+  {0, "%s \xe3\x82\x92" "\xe3\x82\xa4" "\xe3\x83\xb3" "\xe3\x82\xb9" "\xe3\x83\x88" "\xe3\x83\xbc" "\xe3\x83\xab" "\xe4\xb8\xad" ": %d %%  (%.1f MB/s)",
+   "\xe3\x83\x97" "\xe3\x83\xac" "\xe3\x82\xa4" "\xe4\xb8\xad" "\xe3\x81\xaf" "\xe3\x82\xa4" "\xe3\x83\xb3" "\xe3\x82\xb9" "\xe3\x83\x88" "\xe3\x83\xbc" "\xe3\x83\xab" "\xe3\x81\x8c" "\xe9\x81\x85" "\xe3\x81\x8f" "\xe3\x81\xaa" "\xe3\x82\x8a" "\xe3\x81\xbe" "\xe3\x81\x99" "\xe3\x80\x82" "",
+   "\xe3\x82\xb2" "\xe3\x83\xbc" "\xe3\x83\xa0" "\xe3\x82\x92" "\xe7\xb5\x82" "\xe4\xba\x86" "\xe3\x81\x99" "\xe3\x82\x8b" "\xe3\x81\xa8" "\xe6\x9c\x80" "\xe5\xa4\xa7" " 10 \xe5\x80\x8d" "\xe9\x80\x9f" "\xe3\x81\x8f" "\xe3\x81\xaa" "\xe3\x82\x8a" "\xe3\x81\xbe" "\xe3\x81\x99" "\xe3\x80\x82" ""},
+  {16, "Instalacja %s: %d %%  (ograniczona, %.1f MB/s)",
+   "Instalacja dzia\xc5\x82" "a wolniej podczas gry.",
+   "Zamknij gr\xc4\x99" ", aby instalowa\xc4\x87" " do 10x szybciej."},
+  {12, "%s asennetaan: %d %%  (rajoitettu, %.1f Mt/s)",
+   "Asennus on hitaampi, kun pelaat.",
+   "Lopeta peli, niin asennus on jopa 10x nopeampi."},
+  {13, "%s installeras: %d %%  (begr\xc3\xa4" "nsad, %.1f MB/s)",
+   "Installationen g\xc3\xa5" "r l\xc3\xa5" "ngsammare medan du spelar.",
+   "Avsluta spelet f\xc3\xb6" "r upp till 10x snabbare installation."},
+  {14, "%s installeres: %d %%  (begr\xc3\xa6" "nset, %.1f MB/s)",
+   "Installationen k\xc3\xb8" "rer langsommere, mens du spiller.",
+   "Afslut spillet for at installere op til 10x hurtigere."},
+  {15, "%s installeres: %d %%  (begrenset, %.1f MB/s)",
+   "Installasjonen g\xc3\xa5" "r tregere mens du spiller.",
+   "Avslutt spillet for \xc3\xa5" " installere opptil 10x raskere."},
+};
+static const NoticeText& notice_text() {
+  static int lang = -2;
+  if (lang == -2 && sceSystemServiceParamGetInt(1 /*SCE_SYSTEM_SERVICE_PARAM_ID_LANG*/, &lang) != 0) lang = 1;
+  for (const NoticeText& t : kNotice)
+    if (t.lang == lang) return t;
+  return kNotice[0];
+}
+
 extern "C" __attribute__((force_align_arg_pointer)) void ps5_perf_overlay(int W, int H) {
-  if (!g_settings.perf) return;
+  int igame = -1, ipct = 0, ikbps = 0;
+  const bool notice = g_settings.notice && ps5sdl_game_active() && ps5_install_notice_state(&igame, &ipct, &ikbps);
+  if (!g_settings.perf && !notice) return;
   static ImGuiContext* ctx = nullptr;
   static bool failed = false;
+  static ImFont* nfont = nullptr;  // Noto Sans JP with only the glyphs of the notice texts of this language
   if (failed) return;
   ImGuiContext* prev = ImGui::GetCurrentContext();
   if (!ctx) {
     ctx = ImGui::CreateContext();
     ImGui::SetCurrentContext(ctx);
     ImGui::GetIO().IniFilename = nullptr;
+    {
+      const NoticeText& t = notice_text();
+      static ImVector<ImWchar> ranges;
+      ImFontGlyphRangesBuilder b;
+      b.AddRanges(ImGui::GetIO().Fonts->GetGlyphRangesDefault());
+      b.AddText(t.title);
+      b.AddText(t.l1);
+      b.AddText(t.l2);
+      b.BuildRanges(&ranges);
+      std::string path = "/data/homebrew/LAPY77001/assets/NotoSansJP-Medium.ttf";
+      struct stat st;
+      for (const char* g : {"jak1", "jak2", "jak3"})
+        if (stat(path.c_str(), &st) != 0) path = game_dir(g) + "/game/assets/fonts/NotoSansJP-Medium.ttf";
+      if (stat(path.c_str(), &st) == 0) {
+        nfont = ImGui::GetIO().Fonts->AddFontFromFileTTF(path.c_str(), 15.0f, nullptr, ranges.Data);
+      }
+      ps5_log("install notice: font %s", nfont ? path.c_str() : "missing, default font");
+    }
     if (!ImGui_ImplOpenGL3_Init("#version 430")) {
       ps5_log("perf overlay: ImGui_ImplOpenGL3_Init failed");
       failed = true;
@@ -1100,13 +1211,41 @@ extern "C" __attribute__((force_align_arg_pointer)) void ps5_perf_overlay(int W,
   io.FontGlobalScale = H / 720.0f;
   ImGui_ImplOpenGL3_NewFrame();
   ImGui::NewFrame();
-  ImGui::SetNextWindowPos(ImVec2(16, 16));
-  ImGui::SetNextWindowBgAlpha(0.55f);
-  ImGui::Begin("##perf", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
-                                       ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings);
-  ImGui::TextUnformatted(line1);
-  ImGui::TextUnformatted(line2);
-  ImGui::End();
+  const ImGuiWindowFlags fl = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+                             ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings;
+  float y = 16;
+  if (g_settings.perf) {
+    ImGui::SetNextWindowPos(ImVec2(16, 16));
+    ImGui::SetNextWindowBgAlpha(0.55f);
+    ImGui::Begin("##perf", nullptr, fl);
+    ImGui::TextUnformatted(line1);
+    if (g_settings.perf == 2) ImGui::TextUnformatted(line2);
+    y += ImGui::GetWindowHeight() + 10;
+    ImGui::End();
+  }
+  if (notice) {  // another game installs from the PC while this one runs: say it is throttled and how to speed it up
+    static const char* const kNames[3] = {"Jak and Daxter", "Jak II", "Jak 3"};
+    const NoticeText& t = notice_text();
+    char title[200];
+    std::snprintf(title, sizeof title, t.title, kNames[igame], ipct, ikbps / 1024.0);
+    if (nfont) ImGui::PushFont(nfont);
+    ImGui::SetNextWindowPos(ImVec2(16, y));
+    ImGui::SetNextWindowBgAlpha(0.8f);
+    ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 190, 60, 255));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 2.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+    ImGui::Begin("##install", nullptr, fl);
+    ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.35f, 1.0f), "%s", title);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(255, 190, 60, 255));
+    ImGui::ProgressBar(ipct / 100.0f, ImVec2(-1, 6), "");
+    ImGui::PopStyleColor();
+    ImGui::TextUnformatted(t.l1);
+    ImGui::TextUnformatted(t.l2);
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
+    if (nfont) ImGui::PopFont();
+  }
   ImGui::Render();
   GLint fb = 0;
   glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fb);

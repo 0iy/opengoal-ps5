@@ -68,6 +68,9 @@ using namespace ps5imp;  // Phase enum: IDLE..FAILED (same numbers as Ps5GameSta
 const char* const kPhase[] = {"idle", "uploading", "verifying", "queued", "importing", "done", "failed"};
 const char* const kStageName[] = {"", "prepare", "extract", "decompile", "compile"};
 extern "C" bool ps5sdl_game_active();
+extern "C" unsigned ps5sdl_slow_frames();
+std::atomic<int> g_inst_kbps{5120};  // current write cap in KiB/s while a game runs
+std::atomic<int> g_inst_game{-1};    // game index of the running install stream
 static long long mono_ms_ws() { timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000; }
 
 const char* const kIds[3] = {"jak1", "jak2", "jak3"};
@@ -500,7 +503,10 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
     FsSink sink(stage_dir, add);
     std::unique_ptr<ps5inst::Receiver> rx(new ps5inst::Receiver(&sink, total));  // ~130 KB of tables: heap, the thread stack is small
     unsigned long long throttled = 0;
-    long long tq0 = 0;
+    long long tq0 = 0, tadj = 0;
+    unsigned slow0 = 0;
+    g_inst_kbps = 5120;
+    g_inst_game = gi;
     bool ok = key.empty() && (pending.empty() || rx->feed(pending.data(), pending.size()));
     pending.clear();
     while (ok && !rx->finished()) {
@@ -510,14 +516,22 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
       if (r <= 0) { key = "net"; break; }
       g.last_io = (long)time(nullptr);
       ok = rx->feed(buf.data(), size_t(r));
-      // while a game runs, cap the disk writes at about 20 MB/s: unthrottled, the game's level loading waited 5 to 20 s
+      // while a game runs, cap the disk writes: unthrottled, the game's level loading waited 5 to 20 s and 20 MB/s dropped
+      // Jak 1 to 25 fps. The cap adapts once a second: halved when the game had slow frames (over 20 ms), else raised by 1 MB/s.
       if (ps5sdl_game_active()) {
         throttled += size_t(r);
         const long long t = mono_ms_ws();
-        if (!tq0) tq0 = t;
-        const long long due = tq0 + (long long)(throttled / (20ull << 10));  // ms for `throttled` bytes at 20 MB/s
+        if (!tq0) { tq0 = tadj = t; slow0 = ps5sdl_slow_frames(); }
+        if (t - tadj >= 1000) {
+          const unsigned slow = ps5sdl_slow_frames();
+          const int kbps = g_inst_kbps.load();
+          g_inst_kbps = slow - slow0 >= 2 ? std::max(2048, kbps / 2) : std::min(20480, kbps + 1024);
+          slow0 = slow;
+          tadj = t;
+        }
+        const long long due = tq0 + (long long)(throttled / (unsigned long long)g_inst_kbps.load());  // ms for `throttled` bytes at the cap
         if (due > t) usleep(useconds_t((due - t) * 1000));
-        if (t - tq0 > 5000) { tq0 = mono_ms_ws(); throttled = 0; }
+        if (t - tq0 > 2000) { tq0 = mono_ms_ws(); throttled = 0; }
       } else {
         tq0 = 0;
         throttled = 0;
@@ -568,6 +582,7 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
     if (key.empty()) { g.bytes = total; g.phase = DONE; }
     else { std::snprintf(g.err, sizeof g.err, "%s", key.c_str()); g.phase = FAILED; }
   }
+  g_inst_game = -1;
   g_installing = false;
   ps5_log("install: %s %s (%llu files, %llu bytes, %ld s)", game.c_str(), key.empty() ? "ok" : key.c_str(), (unsigned long long)files, total,
           (long)time(nullptr) - g.t0.load());
@@ -1012,4 +1027,15 @@ extern "C" const char* ps5_import_queue_text() {
     t = std::string(kTitles[g_queue.front()]) + ": waiting";
   }
   return t.c_str();
+}
+
+// install notice in the running game (launcher.cpp): game index, percent of the running stream, current write cap
+extern "C" bool ps5_install_notice_state(int* game, int* pct, int* kbps) {
+  const int gi = g_inst_game.load();
+  if (gi < 0) return false;
+  const unsigned long long b = g_g[gi].bytes.load(), t = g_g[gi].total.load();
+  *game = gi;
+  *pct = t ? int(b * 100 / t) : 0;
+  *kbps = g_inst_kbps.load();
+  return true;
 }

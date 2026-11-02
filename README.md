@@ -144,3 +144,7 @@ Use it only with games you own and on a console you own.
 ShadowMountPlus, etaHEN, FFmpeg (ATRAC9 tables), Noto Sans JP (OFL). Full list: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 GPL-3.0-or-later, see [`LICENSE`](LICENSE).
+
+## AI notice
+
+AI tools may be used in the development of this project.

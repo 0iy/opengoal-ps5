@@ -33,7 +33,7 @@ MARKER = b"OGAGENT_TOKEN:"
 TOKEN_LEN = 32
 LAST = ("param.json", "eboot.bin")  # sent last: an interrupted upload never leaves a launchable half-app
 RELEASE_BASE = "https://github.com/0iy/opengoal-ps5/releases/latest/download"
-DATA_FORMAT = 2  # layout of an installed game; keep equal to pc_import.DATA_FORMAT (tests check it)
+DATA_FORMAT = 3  # layout of an installed game; keep equal to pc_import.DATA_FORMAT (tests check it)
 
 
 def vkey(v):

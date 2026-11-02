@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.1 (2026-11-01)
+
+Update note: import the games again after this update (the setup lists them). The new game code brings the launcher entry and the system language; Jak 3 imported with 0.2.0 can also be missing its music, which the new import fixes.
+
+### Added
+- "Back to Launcher" in the main menu of every game (where New Game, Load Game and Options are): ends the game and shows the launcher
+- Text, subtitles and voices follow the PS5 system language on every start (a language picked in the game menu lasts until the game closes)
+- "Back to Launcher" translated into the game text languages
+- Notice at the top left of a running game while another game installs: progress, current speed, and the hint that quitting the game installs up to 10x faster (in the PS5 system language)
+- Launcher settings: "Install notice" on/off; "Performance overlay" has three levels (Off, Frame rate, Full; an overlay that was on before shows the frame rate only)
+
+### Changed
+- Launcher navigation with the D-pad or stick like a TV menu: Left goes to the game list (Up/Down pick the game), Right to Play, Down to Settings and Controls; Cross presses, Circle goes back to the game list
+
+### Fixed
+- Jak 3 without music: the import sent VAGWAD.INT (music) and VAGWAD.COM (shared sounds) as optional voice languages after the game, and an interrupted upload left them out. They now install with the game
+- Launcher nearly frozen during an install: log writes moved to their own thread, the installed state of the games is cached off the render loop
+- Stutter and long loads in a running game while another game installs: while a game runs, the install adapts its write speed every second (2 to 20 MB/s, lowered when the game has slow frames)
+- PC import reported "connection lost" after uploads longer than 5 minutes although the console finished the install
+
 ## 0.2.0 (2026-11-01)
 
 Update note: the games must be imported again after this update (the setup lists them). The app now runs jak-project v0.3.9 and needs game code built for it.
@@ -10,6 +30,7 @@ Update note: the games must be imported again after this update (the setup lists
 - Game language follows the PS5 system language; the image follows the system safe area, with an own display area setting (90-100 %) in the launcher and game menus
 - Performance overlay (setting)
 - Jak 2/3 pause-menu background stays correct when the resolution changes while the menu is open
+
 
 ### Changed
 - Faster drawing of characters (instanced draws) and an adaptive level load budget (less pop-in, e.g. Dead Town)
@@ -68,6 +89,7 @@ Based on OpenGOAL (jak-project `553a713`, v0.3.x). Tested on firmware 13.60 only
 - Setup `--debug` log with per-request timings (`ps5_setup_debug.log`), detection of a suspended app copy that blocks the launch, test report issue template
 - One command line, `tools/ps5`, for build, deploy, run, measure, QA, import, sync, test and doctor
 - All-in-one offline test suite, `python tests/run_all.py`, with a privacy lint
+
 
 ### Changed
 - Repository restructure: the 150 files of the root moved into `app/`, `driver/`, `engine/`, `payloads/`, `tools/`, `installer/` and `tests/`; the 60 driver patch scripts and the

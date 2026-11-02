@@ -725,8 +725,15 @@ extern "C" bool ps5sdl_game_active() {
   return t && mono_ms() - t < 2000;
 }
 
+// game frames over 20 ms since start: the PC install stream lowers its write cap when this grows
+static std::atomic<unsigned> g_slow_frames{0};
+extern "C" unsigned ps5sdl_slow_frames() { return g_slow_frames.load(); }
+
 bool SDL_GL_SwapWindow(SDL_Window*) {
-  if (g_gl_phase.load() != 1) g_game_swap_ms = mono_ms();
+  if (g_gl_phase.load() != 1) {
+    const long long t = mono_ms(), prev = g_game_swap_ms.exchange(t);
+    if (prev && t - prev > 20 && t - prev < 2000) g_slow_frames.fetch_add(1);
+  }
   ps5_driver_gputrace_frame();
   ps5_profile_tick();
   {  // optional: /data/opengoal/config/renderpin.txt holds a CPU number to pin the swapping (render) thread to

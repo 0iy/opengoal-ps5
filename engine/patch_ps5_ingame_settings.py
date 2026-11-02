@@ -28,7 +28,8 @@ def rp(rel):
 EDITS = []  # (id, file, old, new)
 # edits whose new text a later edit inserts into: done when this marker (a line of their own new text) is present
 DONE = {"j1.fsr": ";; __ps5__ FSR entries: sliders", "j1.state": ";; __ps5__ storage for the two FSR sliders",
-        "jak2.fsr": ";; __ps5__ FSR entries. The launcher", "jak3.fsr": ";; __ps5__ FSR entries. The launcher"}
+        "jak2.fsr": ";; __ps5__ FSR entries. The launcher", "jak3.fsr": ";; __ps5__ FSR entries. The launcher",
+        **{f"{g}.textfallback": ";; __ps5__ text fallback: PS5 settings texts" for g in ("jak1", "jak2", "jak3")}}
 
 
 def edit(eid, path, old, new):
@@ -103,11 +104,27 @@ edit("jak1.textid.area", "goal_src/jak1/engine/ui/text-h.gc", "  (ps5-sharpness 
 for g, f in (("jak2", "goal_src/jak2/engine/ui/text-id-h.gc"), ("jak3", "goal_src/jak3/engine/ui/text-h.gc")):
     edit(f"{g}.textid.area", f, "  (progress-ps5-sharpness #x1f11)\n", "  (progress-ps5-sharpness #x1f11)\n  (progress-ps5-area #x1f12)\n")
 
+# "Back to Launcher" (text id #x1f13): the PC quit entry of the title menu, renamed, so the hidden-by-name list keeps it.
+# Picking it ends the game (kernel-shutdown after the game's own yes/no question) and the app shows the launcher again.
+edit("jak1.textid.launcher", "goal_src/jak1/engine/ui/text-h.gc", "  (ps5-area #x1f12)\n", "  (ps5-area #x1f12)\n  (ps5-launcher #x1f13)\n")
+for g, f in (("jak2", "goal_src/jak2/engine/ui/text-id-h.gc"), ("jak3", "goal_src/jak3/engine/ui/text-h.gc")):
+    edit(f"{g}.textid.launcher", f, "  (progress-ps5-area #x1f12)\n", "  (progress-ps5-area #x1f12)\n  (progress-ps5-launcher #x1f13)\n")
+edit("j1.launcher", "goal_src/jak1/pc/progress-pc.gc",
+     "            :name (text-id quit-game)\n            :scale #t\n            :param3 (game-option-menu quit-title))",
+     "            :name (text-id ps5-launcher) ;; __ps5__ back to the launcher\n            :scale #t\n            :param3 (game-option-menu quit-title))")
+edit("jak2.launcher", "goal_src/jak2/pc/progress/progress-static-pc.gc",
+     "      (new 'static 'menu-exit-game-option\n        :name (text-id progress-quit)\n",
+     "      (new 'static 'menu-exit-game-option\n        :name (text-id progress-ps5-launcher) ;; __ps5__ back to the launcher\n")
+edit("jak3.launcher", "goal_src/jak3/pc/progress/progress-static-pc.gc",
+     "(new 'static 'menu-exit-game-option :name (text-id progress-quit) :offset-y 0.75)",
+     "(new 'static 'menu-exit-game-option :name (text-id progress-ps5-launcher) :offset-y 0.75) ;; __ps5__ back to the launcher")
+
 # built-in fallback for the PS5 texts: the console's .TXT files are built at import (from the disc) and lack them, and a
 # PC without the disc cannot rebuild them; .TXT entries still win when present
 TEXT_FALLBACK = {"jak1": ("UPSCALING (FSR)", "FSR SHARPNESS", "DISPLAY AREA"),
                  "jak2": ("Upscaling (FSR)", "FSR Sharpness", "Display Area"),
                  "jak3": ("Upscaling (FSR)", "FSR Sharpness", "Display Area")}
+LAUNCHER_TEXT = {"jak1": "BACK TO LAUNCHER", "jak2": "Back to Launcher", "jak3": "Back to Launcher"}
 for g, (t0, t1, t2) in TEXT_FALLBACK.items():
     edit(f"{g}.textfallback", f"goal_src/{g}/engine/ui/text.gc",
          "  ;; og:preserve-this call custom function\n  (lookup-text-impl! this arg0 arg1 #f))",
@@ -116,12 +133,23 @@ for g, (t0, t1, t2) in TEXT_FALLBACK.items():
          "  (the-as string (or (lookup-text-impl! this arg0 #t #f)\n"
          f"      (case (the int arg0) ((#x1f10) \"{t0}\") ((#x1f11) \"{t1}\") ((#x1f12) \"{t2}\") (else #f))\n"
          "      (lookup-text-impl! this arg0 arg1 #f))))")
+    edit(f"{g}.textfallback.launcher", f"goal_src/{g}/engine/ui/text.gc", f'((#x1f12) "{t2}") (else #f)',
+         f'((#x1f12) "{t2}") ((#x1f13) "{LAUNCHER_TEXT[g]}") (else #f)')
 
-# text JSON (appended to every game_custom_text_*.json of the game; English everywhere, no per-language translation)
+# text JSON (appended to every game_custom_text_*.json of the game; English, 1f13 translated per locale)
 JSON_TEXT = {
-    "jak1": {"1f10": "UPSCALING (FSR)", "1f11": "FSR SHARPNESS", "1f12": "DISPLAY AREA"},
-    "jak2": {"1f10": "Upscaling (FSR)", "1f11": "FSR Sharpness", "1f12": "Display Area"},
-    "jak3": {"1f10": "Upscaling (FSR)", "1f11": "FSR Sharpness", "1f12": "Display Area"},
+    "jak1": {"1f10": "UPSCALING (FSR)", "1f11": "FSR SHARPNESS", "1f12": "DISPLAY AREA", "1f13": "BACK TO LAUNCHER"},
+    "jak2": {"1f10": "Upscaling (FSR)", "1f11": "FSR Sharpness", "1f12": "Display Area", "1f13": "Back to Launcher"},
+    "jak3": {"1f10": "Upscaling (FSR)", "1f11": "FSR Sharpness", "1f12": "Display Area", "1f13": "Back to Launcher"},
+}
+# "Back to Launcher" per text file locale (Jak 1 shows menu texts in capitals); the English entry above is replaced
+LAUNCHER_TR = {
+    "bs-BA": "Nazad na pokretač", "ca-ES": "Torna al llançador", "cs-CZ": "Zpět do spouštěče", "da-DK": "Tilbage til launcher",
+    "de-DE": "Zurück zum Launcher", "es-ES": "Volver al lanzador", "fi-FI": "Takaisin käynnistimeen", "fr-FR": "Retour au lanceur",
+    "gl-ES": "Volver ao lanzador", "hr-HR": "Natrag na pokretač", "hu-HU": "Vissza az indítóba", "is-IS": "Aftur í ræsiforrit",
+    "it-IT": "Torna al launcher", "ja-JP": "ランチャーに戻る", "ko-KR": "런처로 돌아가기", "lt-LT": "Grįžti į paleidyklę",
+    "nl-NL": "Terug naar launcher", "no-NO": "Tilbake til launcher", "pl-PL": "Powrót do launchera", "pt-BR": "Voltar ao inicializador",
+    "pt-PT": "Voltar ao iniciador", "ro-RO": "Înapoi la lansator", "sv-SE": "Tillbaka till startprogrammet",
 }
 
 # ---- GOAL: shared pckernel-common.gc (used by all three games; jak2/jak3 build it from the jak1 folder) -------
@@ -141,6 +169,17 @@ EDITS.insert(0, ("upg.pk.console", PK, "     (commit-to-file obj)))\n  ;; __ps5_
                  "     (commit-to-file obj)))\n  ;; __ps5__ fixed output: a copied PC pc-settings.gc must not turn vsync off or raise the frame rate\n" + PK_V2))
 EDITS[[e[0] for e in EDITS].index("pk.load")] = ("pk.load", PK, "     (commit-to-file obj)))\n  0)",
     "     (commit-to-file obj)))\n  ;; __ps5__ fixed output: a copied PC pc-settings.gc must not turn vsync off or raise the frame rate\n" + PK_V2)
+# system language: text, subtitles and voices follow the PS5 system language on every start (scf-get-language, see
+# engine/ports/patches/0070-system-language.patch); the values saved in pc-settings.gc are read and dropped.
+# The first entries of each game's pc-language match its language-enum, which scf-get-language returns.
+edit("pk.lang", PK, '    (("game-language") (set-game-language! obj (the-as language-enum (file-stream-read-int file))))',
+     '    (("game-language") (file-stream-read-int file) (set-game-language! obj (scf-get-language))) ;; __ps5__ system language')
+for g, f in (("jak1", "goal_src/jak1/pc/pckernel.gc"), ("jak2", "goal_src/jak2/pc/pckernel.gc"), ("jak3", "goal_src/jak3/pc/pckernel.gc")):
+    for key in ("text-language", "subtitle-language"):
+        edit(f"{g}.lang.{key}", f,
+             f'    (("{key}") (set! (-> obj {key}) (the-as pc-language (file-stream-read-int file))))',
+             f'    (("{key}") (file-stream-read-int file) (set! (-> obj {key}) (the-as pc-language (scf-get-language)))) ;; __ps5__ system language')
+
 edit("pk.fps", PK, '    (("fps") (set-frame-rate! obj (file-stream-read-int file) #t))',
      '    (("fps") (file-stream-read-int file) (set-frame-rate! obj 60 #t)) ;; __ps5__ ignore the saved value')
 edit("pk.vsync", PK, '    (("vsync") (set! (-> obj vsync?) (file-stream-read-symbol file)))',
@@ -550,8 +589,16 @@ def patch_json(failed):
     for g, kv in JSON_TEXT.items():
         for path in sorted(glob.glob(os.path.join(JAK, rp(f"game/assets/{g}/text"), "game_custom_text_*.json"))):
             raw = read(path)
+            loc = os.path.basename(path)[len("game_custom_text_"):-len(".json")]
+            if loc in LAUNCHER_TR:
+                tr = LAUNCHER_TR[loc].upper() if g == "jak1" else LAUNCHER_TR[loc]
+                old = f'"1f13": {json.dumps(kv["1f13"], ensure_ascii=False)}'
+                if old in raw:
+                    raw = raw.replace(old, f'"1f13": {json.dumps(tr, ensure_ascii=False)}')
+                    write(path, raw)
+                    changed += 1
             data = json.loads(raw)
-            add = {k: v for k, v in kv.items() if k not in data}
+            add = {k: (tr if k == "1f13" and loc in LAUNCHER_TR else v) for k, v in kv.items() if k not in data}
             if not add:
                 continue
             body = raw.rstrip()

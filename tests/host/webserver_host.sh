@@ -19,6 +19,7 @@ extern "C" int ps5_import_stage_id() { return 3; }
 extern "C" int ps5_import_stage_percent() { return 50; }
 extern "C" void ps5_import_cancel() { cx = true; }
 extern "C" bool ps5sdl_game_active() { return false; }
+extern "C" unsigned ps5sdl_slow_frames() { return 0; }
 extern "C" const char* ps5_import_reason() { return cx ? "cancelled" : ""; }
 extern "C" const char* ps5_iso_probe(const char*, char* s, char* g, char* r) { strcpy(s, "SCUS-97265"); strcpy(g, "jak2"); strcpy(r, "NTSC-U"); return nullptr; }
 extern "C" void ps5_web_start(int, const char*);
