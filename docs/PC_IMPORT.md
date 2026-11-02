@@ -129,6 +129,10 @@ PUT /api/install?game=jak1&total=RAW_TAR_BYTES&mode=replace|add&serial=SCES-5036
 * paths are validated (no `..`, no absolute path, no `\`, `:` or control characters, files and directories only, links refused); a tar entry outside the allowed form fails the whole install;
 * after an error the answer is sent and the connection is drained for up to 64 MB / 1 s before closing (otherwise the TCP reset can destroy the answer); the client also reads while it sends;
 * `POST /api/cancel?game=` during an install stops it (`reason` `cancelled`, 422);
+* the file data goes through the **writer payload** (`payloads/ogwriter.c`, `127.0.0.1:9098`): the console throttles the disk writes of the app process to
+  about 2 MB/s once it has written about 1.3 GB (measured 240 MB/s -> 2 MB/s; `fsync`, `O_DIRECT` and `fadvise` do not help, the budget recovers over minutes),
+  while another process keeps about 250 MB/s at the same time. `pc_import` sends `ogwriter.elf` to the ELF loader (9021) before every upload; the app connects to it
+  per install and falls back to writing itself (slow for big games) when it is not running. Jak 3 (3.9 GB + 1.5 GB voices): about 25 min before, 64 s with the writer;
 * no `statvfs` (it crashes on the PS5 SDK, see the existing comment); a full disk shows up as `ENOSPC` -> `no_space`. No `fsync`: a power loss during the final seconds can leave a partial game that still carries `.ps5ready`.
 
 Status integration (no change to `launcher.cpp`, `ps5import.h` unchanged): while installing, `ps5_game_status` reports `phase = 4 (importing)`, `stage = 0` (the launcher labels that

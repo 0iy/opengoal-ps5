@@ -438,7 +438,8 @@ def run(tmp):
     t0 = time.time()
     c = Agent(binary, base, extra=["--lifetime", "2"])
     code = c.p.wait(10)
-    check("lifetime exit", code == 0 and 1.5 < time.time() - t0 < 6, "%s %.1f" % (code, time.time() - t0))
+    # the agent counts whole seconds: --lifetime 2 ends after 1 to 2 s
+    check("lifetime exit", code == 0 and 0.9 < time.time() - t0 < 6, "%s %.1f" % (code, time.time() - t0))
     c.stop()
     d = Agent(binary, base, extra=["--idle", "2"])
     time.sleep(2.7)

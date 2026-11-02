@@ -21,7 +21,7 @@ RELEASE = "v0.3.9"         # == engine/ports/upstream.lock commit b6c8430 (verif
 BASE = "https://github.com/open-goal/jak-project/releases/download/" + RELEASE + "/"
 # our toolchain pack (patched goal_src, game assets with the PS5 menu texts, precompiled game code): a release asset, pinned by hash
 PACK_NAME = "opengoal-ps5-pack.tgz"
-PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.2.1/" + PACK_NAME
+PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.3.0/" + PACK_NAME
 PACK_SIZE = 19616941
 PACK_SHA256 = "93abce32754fa0e22e7182ebf5fc77ce925f55c26ec26268701dffb9d4394541"
 TOOLS = {  # sizes/sha256 from the GitHub release API digests
@@ -646,6 +646,49 @@ def load_codepack(path):
 
 
 # ---------------------------------------------------------------------------------------------------------- stages
+# free RAM the extractor/goalc need for one game; below it they die with "bad allocation" or exit 0xC0000409
+# shortcut: Jak 3 failed at 0.4 GB free and passed at 4 GB free; measure the real peak if users still hit it
+NEED_RAM_GB = {"jak1": 2, "jak2": 3, "jak3": 3}
+
+
+def free_ram_gb():
+    """Available physical memory in GB, None where unknown."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class MS(ctypes.Structure):
+                _fields_ = [("len", ctypes.c_ulong), ("load", ctypes.c_ulong)] + [(n, ctypes.c_ulonglong) for n in (
+                    "total", "avail", "ptotal", "pavail", "vtotal", "vavail", "xavail")]
+            m = MS()
+            m.len = ctypes.sizeof(MS)
+            return m.avail / 2**30 if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m)) else None
+        for l in open("/proc/meminfo"):
+            if l.startswith("MemAvailable:"):
+                return int(l.split()[1]) / 2**20
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None
+
+
+def check_ram(game):
+    need, free = NEED_RAM_GB.get(game, 5), free_ram_gb()
+    DBG("ram: %s GB free, %d GB needed" % ("?" if free is None else "%.1f" % free, need))
+    if free is not None and free < need:
+        raise Fail("memory", "only %.1f GB RAM free, %s needs about %d GB: close other programs (browser, games, editors) and "
+                   "start again" % (free, game, need))
+
+
+def work_dirs(proj, game):
+    return [os.path.join(proj, d, game) for d in ("iso_data", "decompiler_out", "out")]
+
+
+def work_key(iso, codepack):
+    """Same disc file + same project (ensure_project rebuilds it on a new pack) = the extract/decompile/compile output is reusable."""
+    st = os.stat(iso)
+    return "%s|%s|%d|%d|%s" % (RELEASE, os.path.abspath(iso), st.st_size, int(st.st_mtime), codepack or "")
+
+
 def run_tool(rep, phase, cmd, parse, cwd=None):
     """Runs a tool, feeds its stdout lines to parse(line)->percent|None, returns the tail of the log on failure."""
     tail = collections.deque(maxlen=25)
@@ -799,10 +842,30 @@ def check_console(host, port):
         raise Fail("folders", "the app cannot write %s. Run the one-line install again: the setup repairs these folders." % ", ".join(bad))
 
 
+def start_writer(host):
+    """Sends payloads/ogwriter.elf to the ELF loader (9021): the console throttles the app's own disk writes to ~2 MB/s after ~1.3 GB, the
+    writer process is not throttled. A copy that is already running keeps the port and the new one exits. Without the loader the app
+    writes itself (slow for big games)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for elf in (os.path.join(here, "payloads", "ogwriter.elf"), os.path.join(here, "..", "payloads", "ogwriter.elf")):
+        if os.path.isfile(elf):
+            try:
+                with socket.create_connection((host, 9021), timeout=5) as s:
+                    s.sendall(open(elf, "rb").read())
+                time.sleep(0.5)  # let it bind before the app connects
+                DBG("writer: sent %s" % elf)
+            except OSError as e:
+                DBG("writer: ELF loader not reachable (%s), the app writes itself" % e)
+            return
+    DBG("writer: ogwriter.elf not found, the app writes itself")
+
+
 def upload(rep, host, port, game, entries, total, jobs, mode, meta, phase="upload"):
+    start_writer(host)
     t0 = time.time()
     sent = [0]
     q = "game=%s&total=%d&mode=%s&serial=%s&region=%s&format=%d" % (game, total, mode, meta.get("serial", ""), meta.get("region", ""), DATA_FORMAT)
+    q += "&base=%d&all=%d" % (meta.get("base", 0), meta.get("all", total))  # progress of the whole import (game + voice languages)
     try:
         s = socket.create_connection((host, port), timeout=15)
     except OSError as e:
@@ -881,6 +944,7 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true", help="do everything except the upload")
     ap.add_argument("--out", help="write the finished play set to DIR/data (through the real stream format); implies --dry-run")
     ap.add_argument("--keep-work", action="store_true")
+    ap.add_argument("--no-cache", action="store_true", help="extract/decompile again and delete the work files afterwards")
     ap.add_argument("--make-codepack"), ap.add_argument("--from-build"), ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--make-pack"), ap.add_argument("--from-tree"), ap.add_argument("--codepacks")
     a = ap.parse_args(argv)
@@ -909,19 +973,31 @@ def main(argv=None):
             check_console(a.ps5, a.port)
         tools = ensure_tools(a.cache_dir, a.tools_dir, rep)
         proj, pack = ensure_project(a.cache_dir, tools, ensure_pack(a.cache_dir, a.pack, rep) if not a.proj_dir else None, a.proj_dir, rep)
-        for d in ("iso_data", "decompiler_out", "out"):
-            shutil.rmtree(os.path.join(proj, d), ignore_errors=True)
         t_x = time.time()
-        stage_extract(rep, tools, proj, os.path.abspath(a.iso), game)
+        # the work of an earlier import of the same disc is reused: no extractor/goalc run, no RAM peak (--no-cache rebuilds)
+        stamp = os.path.join(proj, ".work_" + game)
+        wkey = work_key(a.iso, a.codepack)
+        cached = (not a.no_cache and all(os.path.isdir(d) for d in work_dirs(proj, game)) and os.path.isfile(stamp)
+                  and open(stamp).read() == wkey)
+        if not cached:
+            if os.path.isfile(stamp):
+                os.remove(stamp)
+            for d in work_dirs(proj, game):
+                shutil.rmtree(d, ignore_errors=True)
+            check_ram(game)
+            stage_extract(rep, tools, proj, os.path.abspath(a.iso), game)
         bi = json.load(open(os.path.join(proj, "iso_data", game, "buildinfo.json")))
         elf = (bi[0] if isinstance(bi, list) else bi).get("elf_hash")
         key = variant_key(game, serial, terr, elf)
-        rep.emit("extract", 100, "extracted", force=True)
-        stage_decompile(rep, tools, proj, game)
-        rep.emit("decompile", 100, "analysed", force=True)
+        rep.emit("extract", 100, "extracted (cached)" if cached else "extracted", force=True)
+        if not cached:
+            stage_decompile(rep, tools, proj, game)
+        rep.emit("decompile", 100, "analysed (cached)" if cached else "analysed", force=True)
         cp = a.codepack or os.path.join(proj, "codepacks", key + ".tar")
         recipe, objs = (load_codepack(cp) if os.path.isfile(cp) else (None, {}))
-        if recipe:
+        if cached:
+            rep.w["compile"] = 1
+        elif recipe:
             rep.w["compile"] = 1
             stage_text(rep, tools, proj, game)
         else:
@@ -929,6 +1005,8 @@ def main(argv=None):
             rep.emit("compile", 0, "no precompiled game code for %s: full build (slow%s)" % (
                 key, ", and objects built on Windows are NOT verified for the console" if os.name == "nt" else ""), force=True)
             stage_compile_full(rep, tools, proj, game)
+        if not cached:
+            open(stamp, "w").write(wkey)
         rep.emit("compile", 100, "ready", force=True)
         rep.emit("pack", 0, "planning play set", force=True)
         core, extra = play_entries(proj, game, recipe, objs, a.voices)
@@ -959,19 +1037,19 @@ def main(argv=None):
             rep.emit("done", 100, "dry run: %d files, %d MB raw, %d MB on the wire, extras %d MB" % (
                 nfiles, total >> 20, wire >> 20, sum(e.size for e in extra) >> 20), force=True, raw_bytes=total, wire_bytes=wire)
         else:
-            upload(rep, a.ps5, a.port, game, core, total, a.jobs, "replace", meta)
+            n2 = tar_total(extra) if extra else 0
+            upload(rep, a.ps5, a.port, game, core, total, a.jobs, "replace", dict(meta, base=0, all=total + n2))
             rep.emit("install", 100, "playable", force=True, playable=True)
             if extra:
-                n2 = tar_total(extra)
                 rep.emit("upload", 0, "voice languages (game is already playable)", force=True)
                 try:
-                    upload(rep, a.ps5, a.port, game, extra, n2, a.jobs, "add", meta)
+                    upload(rep, a.ps5, a.port, game, extra, n2, a.jobs, "add", dict(meta, base=total, all=total + n2))
                 except Fail as e:  # the game is installed and playable; only the other voice languages are missing
                     rep.emit("install", 100, "voice languages not installed: %s" % e, force=True, playable=True, warning=e.reason)
             rep.emit("done", 100, "installed %s" % game, force=True)
-        if not a.keep_work and not a.proj_dir:
-            for d in ("iso_data", "decompiler_out", "out"):
-                shutil.rmtree(os.path.join(proj, d), ignore_errors=True)
+        if a.no_cache and not a.keep_work and not a.proj_dir:
+            for d in work_dirs(proj, game):
+                shutil.rmtree(d, ignore_errors=True)
         return 0
     except Fail as e:
         return failed(rep, a, e.reason, str(e), traceback.format_exc())

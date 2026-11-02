@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 (2026-11-02)
+
+### Changed
+- PC import up to 20x faster for big games: the console slows down the disk writes of the app after about 1.3 GB (to about 2 MB/s), so the files are now written by a small helper process (`payloads/ogwriter.c`) that pc_import starts through the ELF loader. Jak 3 with all voice languages: 64 s instead of about 25 min. Without the ELF loader the app writes itself as before
+- PC import reuses the extracted and decompiled disc data of an earlier import of the same `.iso` (in `~/.opengoal-ps5/proj`): a second import of a game starts uploading after a few seconds and needs no extra RAM. `--no-cache` builds again and deletes the work files afterwards
+- README: latest-release badge, the Start step of the import window, link to the inspect-before-run instructions (from pull request #6 by bobrass)
+
+### Fixed
+- PC import failing with "bad allocation" or a crash of the compiler when the PC is low on memory: it now checks the free RAM first and says how much is missing
+- Install notice in a running game: the percentage covers the whole import (game and voice languages) instead of starting again at 0 % for the voice languages
+
 ## 0.2.1 (2026-11-01)
 
 Update note: import the games again after this update (the setup lists them). The new game code brings the launcher entry and the system language; Jak 3 imported with 0.2.0 can also be missing its music, which the new import fixes.

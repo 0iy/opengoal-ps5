@@ -71,6 +71,7 @@ extern "C" bool ps5sdl_game_active();
 extern "C" unsigned ps5sdl_slow_frames();
 std::atomic<int> g_inst_kbps{5120};  // current write cap in KiB/s while a game runs
 std::atomic<int> g_inst_game{-1};    // game index of the running install stream
+std::atomic<unsigned long long> g_inst_base{0}, g_inst_all{0};  // bytes of the import before this stream, whole import (0 = unknown)
 static long long mono_ms_ws() { timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000; }
 
 const char* const kIds[3] = {"jak1", "jak2", "jak3"};
@@ -343,6 +344,49 @@ void* rm_thread(void* a) {
 
 // Writes the unpacked files below `root`. Replace mode writes straight to the final name (the whole directory is renamed at the
 // end); add mode writes <name>.part and renames per file, so a game that is already playable never sees a half file.
+// Connection to the ogwriter payload (payloads/ogwriter.c, 127.0.0.1:9098): the console throttles the disk writes of this process
+// to ~2 MB/s after ~1.3 GB, the writer process keeps ~250 MB/s. Without the writer the sink writes itself.
+struct Writer {
+  int s = -1;
+  bool connect_local() {
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in a{};
+    a.sin_family = AF_INET; a.sin_port = htons(9098); a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (s >= 0 && connect(s, (sockaddr*)&a, sizeof a) == 0) {
+      int one = 1;
+      setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+      timeval tv{30, 0};
+      setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+      return true;
+    }
+    if (s >= 0) close(s);
+    s = -1;
+    return false;
+  }
+  ~Writer() { if (s >= 0) close(s); }
+  bool put(const void* p, size_t n) {
+    for (const char* c = (const char*)p; n;) {
+      const ssize_t w = send(s, c, n, 0);
+      if (w <= 0) return false;
+      c += w; n -= size_t(w);
+    }
+    return true;
+  }
+  int answer() {  // errno from the writer, EPIPE when the connection broke
+    int32_t v = 0;
+    for (size_t got = 0; got < 4;) {
+      const ssize_t r = recv(s, (char*)&v + got, 4 - got, 0);
+      if (r <= 0) return EPIPE;
+      got += size_t(r);
+    }
+    return v;
+  }
+  int op(char o, const char* p, uint32_t n) {  // 'O' and 'W'; 'O' waits for the answer
+    if (!put(&o, 1) || !put(&n, 4) || !put(p, n)) return EPIPE;
+    return o == 'O' ? answer() : 0;
+  }
+};
+
 struct FsSink : ps5inst::Sink {
   std::string root, cur, tmp;
   bool per_file_rename;
@@ -350,8 +394,13 @@ struct FsSink : ps5inst::Sink {
   const char* step = "";  // what failed (mkdir | open | write | close | rename) and on which path: reported to the PC and logged
   std::string fail_path;
   std::set<std::string> dirs;
-  FsSink(const std::string& r, bool prf) : root(r), per_file_rename(prf) {}
-  ~FsSink() override { if (fd >= 0) close(fd); }
+  Writer wr;
+  bool remote = false;
+  FsSink(const std::string& r, bool prf) : root(r), per_file_rename(prf) {
+    remote = wr.connect_local();
+    ps5_log("install: writer %s", remote ? "payload (127.0.0.1:9098)" : "not running, the app writes itself");
+  }
+  ~FsSink() override { if (fd > 0 && !remote) close(fd); }
   bool bad(const char* s, const std::string& p) { err = errno; step = s; fail_path = p; return false; }
   bool ensure(const std::string& full) {
     if (dirs.count(full)) return true;
@@ -365,13 +414,33 @@ struct FsSink : ps5inst::Sink {
   bool open_file(const std::string& rel, uint64_t) override {
     const size_t sl = rel.rfind('/');
     if (sl != std::string::npos && !ensure(root + "/" + rel.substr(0, sl))) return false;
+    struct Add { long long& a; long long t; ~Add() { a += mono_ms_ws() - t; } } add{open_ms, mono_ms_ws()};
     cur = root + "/" + rel;
     tmp = per_file_rename ? cur + ".part" : cur;
+    f_t0 = mono_ms_ws(); f_bytes = 0;
+    if (remote) {
+      const int e = wr.op('O', tmp.data(), uint32_t(tmp.size()));
+      if (e) { errno = e; return bad("open", tmp); }
+      fd = 0;
+      return true;
+    }
     fd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) return bad("open", tmp);
     return true;
   }
+  long long write_ms = 0, open_ms = 0;  // measurement: disk time inside the install loop
+  long long f_t0 = 0;
+  unsigned long long f_bytes = 0;
+  unsigned long long writes = 0;
   bool write(const char* p, size_t n) override {
+    const long long t0 = mono_ms_ws();
+    ++writes;
+    f_bytes += n;
+    struct Add { long long& a; long long t; ~Add() { a += mono_ms_ws() - t; } } add{write_ms, t0};
+    if (remote) {
+      if (wr.op('W', p, uint32_t(n))) { errno = EPIPE; return bad("write", tmp); }
+      return true;
+    }
     while (n) {
       const ssize_t w = ::write(fd, p, n);
       if (w <= 0) return bad("write", tmp);
@@ -380,7 +449,18 @@ struct FsSink : ps5inst::Sink {
     return true;
   }
   bool close_file() override {
-    const int r = close(fd);
+    const long long tc = mono_ms_ws();
+    int r = 0;
+    if (remote) {
+      const char c = 'C';
+      const int e = wr.put(&c, 1) ? wr.answer() : EPIPE;
+      if (e) { errno = e; r = -1; }
+    } else {
+      r = close(fd);
+    }
+    if (f_bytes >= (16ull << 20))
+      ps5_log("install: file %s %llu MB, open to close %lld ms, close %lld ms", cur.c_str() + root.size(), f_bytes >> 20, mono_ms_ws() - f_t0,
+              mono_ms_ws() - tc);
     fd = -1;
     if (r != 0) return bad("close", tmp);
     if (per_file_rename && rename(tmp.c_str(), cur.c_str()) != 0) return bad("rename", tmp);
@@ -505,17 +585,32 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
     unsigned long long throttled = 0;
     long long tq0 = 0, tadj = 0;
     unsigned slow0 = 0;
+    long long st_t = mono_ms_ws(), st_net = 0, st_feed = 0, st_sleep = 0;
+    unsigned long long st_wire = 0;
     g_inst_kbps = 5120;
+    g_inst_base = strtoull(query_value(query, "base").c_str(), nullptr, 10);  // whole import: game, then voice languages
+    g_inst_all = strtoull(query_value(query, "all").c_str(), nullptr, 10);
     g_inst_game = gi;
     bool ok = key.empty() && (pending.empty() || rx->feed(pending.data(), pending.size()));
     pending.clear();
     while (ok && !rx->finished()) {
       if (g.cancelling.load()) { key = "cancelled"; break; }
       g.bytes = rx->raw_done();
+      const long long m0 = mono_ms_ws();
       const ssize_t r = recv(fd, buf.data(), buf.size(), 0);
-      if (r <= 0) { key = "net"; break; }
+      if (r <= 0) { key = "net"; ps5_log("install: recv rc=%d errno=%d", int(r), errno); break; }
       g.last_io = (long)time(nullptr);
+      const long long m1 = mono_ms_ws();
       ok = rx->feed(buf.data(), size_t(r));
+      const long long m2 = mono_ms_ws();
+      st_net += m1 - m0; st_feed += m2 - m1; st_wire += size_t(r);
+      if (m2 - st_t >= 5000) {  // where the time goes: waiting for the PC, inflating + writing, throttle sleep
+        ps5_log("install: %s %llu MB raw, last %.1f s: wire %.1f MB/s, recv %lld ms, inflate+write %lld ms, throttle %lld ms, cap %d KB/s; disk write %lld ms (%llu writes), open %lld ms",
+                game.c_str(), (unsigned long long)(rx->raw_done() >> 20), (m2 - st_t) / 1000.0, st_wire / 1048.576 / double(m2 - st_t),
+                st_net, st_feed, st_sleep, ps5sdl_game_active() ? g_inst_kbps.load() : 0, sink.write_ms, sink.writes, sink.open_ms);
+        sink.write_ms = sink.open_ms = 0; sink.writes = 0;
+        st_t = m2; st_net = st_feed = st_sleep = 0; st_wire = 0;
+      }
       // while a game runs, cap the disk writes: unthrottled, the game's level loading waited 5 to 20 s and 20 MB/s dropped
       // Jak 1 to 25 fps. The cap adapts once a second: halved when the game had slow frames (over 20 ms), else raised by 1 MB/s.
       if (ps5sdl_game_active()) {
@@ -530,7 +625,7 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
           tadj = t;
         }
         const long long due = tq0 + (long long)(throttled / (unsigned long long)g_inst_kbps.load());  // ms for `throttled` bytes at the cap
-        if (due > t) usleep(useconds_t((due - t) * 1000));
+        if (due > t) { usleep(useconds_t((due - t) * 1000)); st_sleep += due - t; }
         if (t - tq0 > 2000) { tq0 = mono_ms_ws(); throttled = 0; }
       } else {
         tq0 = 0;
@@ -1033,7 +1128,8 @@ extern "C" const char* ps5_import_queue_text() {
 extern "C" bool ps5_install_notice_state(int* game, int* pct, int* kbps) {
   const int gi = g_inst_game.load();
   if (gi < 0) return false;
-  const unsigned long long b = g_g[gi].bytes.load(), t = g_g[gi].total.load();
+  const unsigned long long all = g_inst_all.load();
+  const unsigned long long b = g_g[gi].bytes.load() + (all ? g_inst_base.load() : 0), t = all ? all : g_g[gi].total.load();
   *game = gi;
   *pct = t ? int(b * 100 / t) : 0;
   *kbps = g_inst_kbps.load();

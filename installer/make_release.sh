@@ -16,7 +16,7 @@ chmod +x "$out/install.sh"
 # one-liner GUI: gui/, pc_import.py and the bootstrap scripts travel inside the bundle too
 cp -r "$here/gui" "$out/gui"; rm -rf "$out/gui/__pycache__"; cp "$here/bootstrap.ps1" "$here/bootstrap.sh" "$out/"
 cp "$here/pc_import.py" "$here/ps5_setup.py" "$out/"
-cp "$root/payloads/ogagent.elf" "$root/payloads/scan.elf" "$out/payloads/"
+cp "$root/payloads/ogagent.elf" "$root/payloads/ogwriter.elf" "$root/payloads/scan.elf" "$out/payloads/"
 # toolchain pack (see docs/PC_IMPORT.md, `pc_import.py --make-pack`): travels in the bundle and as its own release asset
 [ -f "$here/opengoal-ps5-pack.tgz" ] && cp "$here/opengoal-ps5-pack.tgz" "$out/" || { echo "missing installer/opengoal-ps5-pack.tgz"; exit 1; }
 # licences travel with the binaries (GPL, OFL font notice, third-party notices)
