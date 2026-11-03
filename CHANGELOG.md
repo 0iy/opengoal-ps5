@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4 (2026-11-03)
+
+### Changed
+- Firmware 9.60 to 13.60: 13.60 runs on the test console, 9.60 runs for a tester (issue #5). The setup marks this range as fine and only warns outside it ("untested: it may work, please send a test report"); it never stops on the firmware. README and install guide list the range and a firmware table to report other versions
+
 ## 0.3.3 (2026-11-03)
 
 ### Removed

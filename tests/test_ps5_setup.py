@@ -183,6 +183,10 @@ class Parsing(unittest.TestCase):
         self.assertEqual(S.make_plan(old, o, {"agent"}), ["upload", "launch"])
         self.assertEqual(S.make_plan(dict(old, av={"version": "2"}), o, set()), ["upload", "launch"])
 
+    def test_firmware_range(self):
+        for fw, want in (("9.60", True), ("13.60", True), ("11.00.000", True), ("9.40", False), ("14.00", False), ("", None)):
+            self.assertEqual(S.fw_in_range(fw), want, fw)
+
     def test_update_decision(self):
         def st(app, **kw):
             base = {"app": app, "loader": True, "agent": {}, "procs": ["x"], "smp": True, "kstuff": "inferred", "onion": False, "open": {"ftp": False}}

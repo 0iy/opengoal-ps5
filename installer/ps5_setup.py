@@ -36,6 +36,16 @@ RELEASE_BASE = "https://github.com/0iy/opengoal-ps5/releases/latest/download"
 DATA_FORMAT = 3  # layout of an installed game; keep equal to pc_import.DATA_FORMAT (tests check it)
 
 
+# firmware reported working: 9.60 (user report, issue #5) to 13.60 (the test console). Others are untested, not refused.
+FW_RANGE = ((9, 60), (13, 60))
+
+
+def fw_in_range(fw):
+    """'13.60' / '9.60.000' -> True inside FW_RANGE, False outside, None when unreadable."""
+    m = re.search(r"(\d+)\.(\d{2})", str(fw or ""))
+    return FW_RANGE[0] <= (int(m.group(1)), int(m.group(2))) <= FW_RANGE[1] if m else None
+
+
 def vkey(v):
     """'0.1.10' -> (0, 1, 10); compares versions without a dependency."""
     return tuple(int(x) for x in re.findall(r"\d+", v or ""))
@@ -129,7 +139,7 @@ T = {
         "done": "Done. OpenGOAL-PS5 answers at http://{}", "next": "Next: add your games. Open the import window: {}",
         "stuck": "A suspended copy of the app blocks the start (launch code 0x8094000c). Close the game on the PS5 (home screen, Options, Close Game). If it stays, restart the jailbreak chain, then run this again.",
         "launch_rc": "The console refused the launch (code 0x{:08x}). Is ShadowMountPlus running and has it mounted the app?",
-        "ask_import": "Open the game import window now? [y/N] ", "fw": "Firmware {} (only 13.60 is tested)",
+        "ask_import": "Open the game import window now? [y/N] ", "fw": "Firmware {} (reported working: 9.60 to 13.60)",
         "noagent_done": "Files are on the console. Load ShadowMountPlus and kstuff yourself, then start OpenGOAL-PS5 from the home screen.",
     },
     "de": {
@@ -161,7 +171,7 @@ T = {
         "done": "Fertig. OpenGOAL-PS5 antwortet unter http://{}", "next": "Als Naechstes: Spiele hinzufuegen. Import-Fenster oeffnen: {}",
         "stuck": "Eine angehaltene Kopie der App blockiert den Start (Code 0x8094000c). Spiel auf der PS5 schliessen (Startbildschirm, Optionen, Spiel beenden). Bleibt sie, Jailbreak neu starten und dies erneut ausfuehren.",
         "launch_rc": "Die Konsole hat den Start abgelehnt (Code 0x{:08x}). Laeuft ShadowMountPlus und hat es die App eingebunden?",
-        "ask_import": "Import-Fenster jetzt oeffnen? [j/N] ", "fw": "Firmware {} (nur 13.60 ist getestet)",
+        "ask_import": "Import-Fenster jetzt oeffnen? [j/N] ", "fw": "Firmware {} (laeuft laut Berichten: 9.60 bis 13.60)",
         "noagent_done": "Die Dateien liegen auf der Konsole. Lade ShadowMountPlus und kstuff selbst, dann starte OpenGOAL-PS5 im Startbildschirm.",
     },
 }
@@ -729,7 +739,9 @@ def rows_from(st, ports, lang):
     if st["onion"]:
         r["onion"] = (lab("onion"), "bad", "LOADED: must not be loaded before the app")
     if a is not None and a["firmware"]:
-        r["fw"] = (lab("fw"), "ok" if str(a["firmware"]).startswith("13.60") else "warn", str(a["firmware"]))
+        ok = fw_in_range(a["firmware"])
+        r["fw"] = (lab("fw"), "ok" if ok else "warn",
+                   str(a["firmware"]) + ("" if ok else " (untested: it may work, please send a test report)"))
     return r
 
 

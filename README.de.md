@@ -6,7 +6,7 @@
   <a href="https://github.com/0iy/opengoal-ps5/actions/workflows/tests.yml"><img src="https://github.com/0iy/opengoal-ps5/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
   <a href="https://github.com/0iy/opengoal-ps5/releases/latest"><img src="https://img.shields.io/github/v/release/0iy/opengoal-ps5?color=f97316" alt="Neueste Version"></a>
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0">
-  <img src="https://img.shields.io/badge/PS5%20firmware-13.60-1f6feb" alt="Firmware 13.60">
+  <img src="https://img.shields.io/badge/PS5%20firmware-9.60%20to%2013.60-1f6feb" alt="Firmware 9.60 bis 13.60">
   <img src="https://img.shields.io/badge/status-experimentell-d97706" alt="Experimentell">
 </p>
 
@@ -23,13 +23,13 @@
 schnellem Spielimport vom PC und einem angepassten OpenGL-zu-AGC-Grafiktreiber. Keine Emulation. **Keine Spieldateien enthalten**: du brauchst deine eigenen, legal erworbenen Discs als `.iso`.
 
 > [!WARNING]
-> **Experimentell, in der Testphase.** Neue Software, die auf deiner Konsole instabil sein kann; getestet auf genau einer Konsole (CFI-2016, Firmware 13.60). Rechne mit Fehlern und Grafikfehlern.
+> **Experimentell, in der Testphase.** Neue Software, die auf deiner Konsole instabil sein kann; von uns getestet auf einer Konsole (CFI-2016, Firmware 13.60); ein Tester nutzt es auf 9.60. Rechne mit Fehlern und Grafikfehlern.
 > **Tester, Feedback, Issues und Pull Requests sind sehr willkommen.** Unabhaengiges Fanprojekt, nicht verbunden mit Sony, Naughty Dog oder dem OpenGOAL-Team:
 > Fehler dieses Ports bitte [hier](https://github.com/0iy/opengoal-ps5/issues/new/choose) melden, nicht bei OpenGOAL.
 
 ## Start
 
-**Du brauchst:** eine PS5 mit Firmware 13.60 und einem Jailbreak, der den ELF-Loader auf Port 9021 startet, einen PC im selben Netz (Windows, macOS oder Linux) mit Python 3 und deine Spiele als `.iso`-Abbilder.
+**Du brauchst:** eine PS5 mit Firmware 9.60 bis 13.60 (andere ungetestet, [melde dich](#mithelfen-und-fehler-melden)) und einem Jailbreak, der den ELF-Loader auf Port 9021 startet, einen PC im selben Netz (Windows, macOS oder Linux) mit Python 3 und deine Spiele als `.iso`-Abbilder.
 
 1. **Jailbreak auf der PS5 starten**, bis der ELF-Loader lauscht (Port 9021). OnionHEN nicht vor dem Start der App laden.
 2. **Eine Zeile am PC einfuegen.** Sie findet die PS5, laedt was fehlt, installiert und startet die App und oeffnet das Import-Fenster. Waehle oder ziehe deine `.iso`-Dateien hinein, druecke **Starten** und waehle nach Abschluss des Imports ein Spiel im OpenGOAL-PS5-Launcher aus.
@@ -75,6 +75,13 @@ Bekannt: das Ein-Befehl-Setup ist neu und nur auf einer Konsole geprueft; einzel
 ## Mithelfen und Fehler melden
 
 Echtes Feedback ist gerade das Wichtigste, auch wenn alles lief.
+
+| Firmware | Stand | Quelle |
+|---|---|---|
+| 13.60 | laeuft, alle drei Spiele | unsere Testkonsole (CFI-2016) |
+| 9.60 | laeuft (nach zwei Ordnern, die das Setup jetzt selbst anlegt) | Tester, [Issue #5](https://github.com/0iy/opengoal-ps5/issues/5) |
+| 9.60 bis 13.60 | sollte laufen, dazwischen ungetestet | gleiche Jailbreak-Kette (ELF-Loader auf Port 9021) |
+| aelter oder neuer | unbekannt | das Setup warnt, bricht aber nicht ab; bitte Testbericht schicken |
 
 - **Ausprobiert?** [Testbericht](https://github.com/0iy/opengoal-ps5/issues/new?template=test-report.yml) mit Konsolenmodell, Firmware und was ging. `ps5_setup_debug.log` anhaengen (Tokens sind maskiert; Privates entfernen).
 - **Fehler gefunden?** [Fehlerbericht](https://github.com/0iy/opengoal-ps5/issues/new?template=bug.yml).

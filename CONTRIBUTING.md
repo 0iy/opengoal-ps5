@@ -1,6 +1,6 @@
 # Contributing
 
-Bug reports, test reports and patches are welcome. This is an experimental hobby project that has been tested on one console model and firmware (13.60), so reports from other setups are especially useful, including "it worked".
+Bug reports, test reports and patches are welcome. This is an experimental hobby project that has been tested on one console model and firmware (13.60; a tester reports 9.60 working), so reports from other setups are especially useful, including "it worked".
 
 ## Test reports
 

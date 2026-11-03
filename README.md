@@ -6,7 +6,7 @@
   <a href="https://github.com/0iy/opengoal-ps5/actions/workflows/tests.yml"><img src="https://github.com/0iy/opengoal-ps5/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
   <a href="https://github.com/0iy/opengoal-ps5/releases/latest"><img src="https://img.shields.io/github/v/release/0iy/opengoal-ps5?color=f97316" alt="latest release"></a>
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0">
-  <img src="https://img.shields.io/badge/PS5%20firmware-13.60-1f6feb" alt="firmware 13.60">
+  <img src="https://img.shields.io/badge/PS5%20firmware-9.60%20to%2013.60-1f6feb" alt="firmware 9.60 to 13.60">
   <img src="https://img.shields.io/badge/status-experimental-d97706" alt="experimental">
 </p>
 
@@ -23,13 +23,13 @@ Play **Jak and Daxter** 1, 2 and 3 natively on a jailbroken PlayStation 5. A por
 launcher, fast game import from your PC and a patched OpenGL-to-AGC graphics driver. No emulation. **No game files included**: bring your own legally owned discs as `.iso`.
 
 > [!WARNING]
-> **Experimental, in testing.** New software that can be unstable on your console; tested on one console only (CFI-2016, firmware 13.60). Expect bugs and glitches.
+> **Experimental, in testing.** New software that can be unstable on your console; tested by us on one console (CFI-2016, firmware 13.60); a tester runs it on 9.60. Expect bugs and glitches.
 > **Testers, feedback, issues and pull requests are very welcome.** Independent fan project, not affiliated with Sony, Naughty Dog or the OpenGOAL team:
 > report bugs of this port [here](https://github.com/0iy/opengoal-ps5/issues/new/choose), not to OpenGOAL.
 
 ## Quick start
 
-**You need:** a PS5 on firmware 13.60 with a jailbreak that runs the ELF loader on port 9021, a PC on the same network (Windows, macOS or Linux) with Python 3, and your own games as `.iso` images.
+**You need:** a PS5 on firmware 9.60 to 13.60 (other versions untested, [tell us](#help-test-and-report-bugs)) with a jailbreak that runs the ELF loader on port 9021, a PC on the same network (Windows, macOS or Linux) with Python 3, and your own games as `.iso` images.
 
 1. **Start the jailbreak on the PS5** until the ELF loader listens (port 9021). Do not load OnionHEN before the app runs.
 2. **Paste one line on the PC.** It finds the PS5, loads what is missing, installs and starts the app, then opens the import window. Choose or drop your `.iso` files, press **Start**, and select a game in the OpenGOAL-PS5 launcher when the import finishes.
@@ -80,6 +80,13 @@ Known issues: the one-command setup is new and verified on one console only; vis
 
 Real feedback is the most useful thing right now, also when everything worked.
 
+| Firmware | Status | Source |
+|---|---|---|
+| 13.60 | works, all three games | our test console (CFI-2016) |
+| 9.60 | works (after creating two folders that the setup now creates itself) | tester, [issue #5](https://github.com/0iy/opengoal-ps5/issues/5) |
+| 9.60 to 13.60 | expected to work, untested in between | same jailbreak chain (ELF loader on port 9021) |
+| older or newer | unknown | the setup warns but does not stop you; please send a test report |
+
 - **Tried it?** Open a [test report](https://github.com/0iy/opengoal-ps5/issues/new?template=test-report.yml): console model, firmware, what worked. Attach `ps5_setup_debug.log` (tokens are masked; remove anything private).
 - **Found a bug?** Open a [bug report](https://github.com/0iy/opengoal-ps5/issues/new?template=bug.yml).
 - **Questions or ideas?** Use [Discussions](https://github.com/0iy/opengoal-ps5/discussions).
@@ -88,7 +95,7 @@ Real feedback is the most useful thing right now, also when everything worked.
 <details>
 <summary><b>FAQ</b></summary>
 
-- **Which firmware works?** 13.60. Others are unknown.
+- **Which firmware works?** 9.60 to 13.60: 13.60 on our console, 9.60 by a tester ([issue #5](https://github.com/0iy/opengoal-ps5/issues/5)). Other versions are untested; the setup warns but does not stop you. Please send a test report either way.
 - **Can I use my disc directly?** No. Make an `.iso` image of your own disc first; `.bin/.cue` must be converted.
 - **Does it write to my console permanently?** It installs one app folder under `/data/homebrew` and data under `/data/opengoal`. It never changes kernel flags or system settings.
 - **Why must kstuff be loaded before OnionHEN?** With OnionHEN's built-in kstuff the app is refused (error `0x80020008`). Load OnionHEN only after the app is running.

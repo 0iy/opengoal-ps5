@@ -4,7 +4,7 @@ Deutsch: siehe unten.
 
 ## What you need
 
-- A jailbroken PS5 (firmware 13.60) and a PC (Windows, Linux or macOS) on the same network.
+- A jailbroken PS5 (firmware 9.60 to 13.60 reported working; other versions untested) and a PC (Windows, Linux or macOS) on the same network.
 - Python 3 on the PC (Windows: python.org, tick "Add to PATH"; Linux and macOS: usually installed). The import window on Windows can fetch a portable Python itself.
 - The ELF loader (port 9021) running on the console. kstuff-lite and ShadowMountPlus are loaded for you.
 - Your own Jak games as unmodified `.iso` images. The release contains no game files.
@@ -119,7 +119,7 @@ and `python3-tk`; Windows: if Python 3 is missing the window offers `winget inst
 
 ## Deutsch
 
-**Voraussetzungen:** gejailbreakte PS5 (FW 13.60), PC im selben Netzwerk, Python 3, deine eigenen Jak-Spiele als `.iso`.
+**Voraussetzungen:** gejailbreakte PS5 (FW 9.60 bis 13.60 laufen laut Berichten, andere ungetestet), PC im selben Netzwerk, Python 3, deine eigenen Jak-Spiele als `.iso`.
 
 **Konsole einrichten:** Exploit starten, bis der ELF-Loader auf Port 9021 lauscht, dann im entpackten Release `python ps5_setup.py` (Linux, macOS: `python3`). Das Skript findet
 die PS5 selbst, zeigt live was laeuft, laedt fehlende Teile (kstuff-lite nur mit `--with-kstuff` oder nach Rueckfrage, ShadowMountPlus) von den Releases der Autoren (Groesse und

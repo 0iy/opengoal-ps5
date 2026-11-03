@@ -21,7 +21,7 @@ RELEASE = "v0.3.9"         # == engine/ports/upstream.lock commit b6c8430 (verif
 BASE = "https://github.com/open-goal/jak-project/releases/download/" + RELEASE + "/"
 # our toolchain pack (patched goal_src, game assets with the PS5 menu texts, precompiled game code): a release asset, pinned by hash
 PACK_NAME = "opengoal-ps5-pack.tgz"
-PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.3.3/" + PACK_NAME
+PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.3.4/" + PACK_NAME
 PACK_SIZE = 19616941
 PACK_SHA256 = "93abce32754fa0e22e7182ebf5fc77ce925f55c26ec26268701dffb9d4394541"
 TOOLS = {  # sizes/sha256 from the GitHub release API digests
