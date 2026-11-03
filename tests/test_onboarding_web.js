@@ -14,7 +14,7 @@ const ctx = {
   fetch: async (url, o = {}) => {
     calls.push((o.method || "GET") + " " + url);
     if (url.startsWith("/api/cancel")) { return { ok: true, json: async () => ({}) }; }
-    return { ok: true, json: async () => ({ version: 3, games, overall, settings: { delete_iso: true } }) };
+    return { ok: true, json: async () => ({ version: 3, games, overall }) };
   },
 };
 vm.createContext(ctx); vm.runInContext(js, ctx);

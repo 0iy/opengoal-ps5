@@ -11,18 +11,8 @@ cat > stub.cpp <<'EOF'
 #include <unistd.h>
 void ps5_log(const char*, ...) {}
 const char* ps5_web_page() { return "<html>ok</html>"; }
-extern "C" bool ps5_import_start(const char*, const char*, const char*) { return true; }
-extern "C" int ps5_import_state() { return 0; }
-extern "C" int ps5_import_rc() { return 0; }
-extern "C" const char* ps5_import_stage() { return "idle"; }
-extern "C" int ps5_import_stage_id() { return 0; }
-extern "C" int ps5_import_stage_percent() { return -1; }
-extern "C" void ps5_import_cancel() {}
 extern "C" bool ps5sdl_game_active() { return false; }
 extern "C" unsigned ps5sdl_slow_frames() { return 0; }
-extern "C" std::FILE* __real_fopen(const char* p, const char* m) { return std::fopen(p, m); }  // the console links with --wrap=fopen
-extern "C" const char* ps5_import_reason() { return ""; }
-extern "C" const char* ps5_iso_probe(const char*, char*, char*, char*) { return "notiso"; }
 extern "C" void ps5_web_start(int, const char*);
 int main() { ps5_web_start(18091, "127.0.0.1"); for (;;) sleep(1); }
 EOF

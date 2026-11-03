@@ -9,8 +9,8 @@ server, and links a patched graphics driver. The PC side only installs the app a
   installer/release_template  --FTP-->    app/glue/ogmain.cpp   main() -> app/shim/appmain.cpp
   installer/pc_import.py ---HTTP :8080-->   |
   browser (phone or PC) ---HTTP :8080-->    +- launcher.cpp    controller UI, settings, ps5.cfg
-                                            +- webserver.cpp   status, ISO upload, install stream  <- webpage.cpp
-                                            +- importer.cpp    ISO check, extractor (engine/gen_ps5_extractor.py)
+                                            +- webserver.cpp   status page, install stream          <- webpage.cpp
+                                                 |  file data -> payloads/ogwriter.c (127.0.0.1:9098, not throttled)
                                             |
                                             +- OpenGOAL engine (jak-project + engine/*.py patches)
                                                  |  OpenGL 4.1 calls
@@ -39,8 +39,8 @@ server, and links a patched graphics driver. The PC side only installs the app a
 
 - **One game per process.** The launcher runs first; choosing a game writes `next.txt` and restarts the app, which then starts the engine for that game.
   This keeps each game's memory map and driver state clean.
-- **Game data** lives under `/data/opengoal/<game>/data`. The importer checks the ISO (serial, size), runs the extractor on the console, and compiles the
-  game code; the PC import path does that work on the PC and sends one compressed stream (`PUT /api/install`) that the console unpacks while receiving.
+- **Game data** lives under `/data/opengoal/<game>/data`. The PC import extracts, decompiles and builds the game on the PC and sends one compressed
+  stream (`PUT /api/install`) that the console unpacks while receiving. The console does not build games itself (not enough memory).
   Nothing from a disc is stored in this repository or in the release.
 - **Settings** are `ps5.cfg` (written by the launcher) plus developer flag files in `/data/opengoal/config/`; `appmain.cpp` turns both into environment
   variables before the engine and driver start.

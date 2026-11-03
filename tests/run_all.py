@@ -365,7 +365,7 @@ def t_h_qr():
 def t_h_web():
     p = host_cpp("bash tests/host/webserver_host.sh", 300)
     assert p.returncode == 0, tail(p)
-    for want in ("chunk0 204", "chunk1 204", "chunk2 204", "start 200"):
+    for want in ("page 200", "info 1 False", "status 3 idle False", "cancel 200", "begin 404", "chunk 404", "start 404", "settings 404"):
         assert want in p.stdout, "missing '%s' in the server dialogue\n%s" % (want, tail(p))
 
 

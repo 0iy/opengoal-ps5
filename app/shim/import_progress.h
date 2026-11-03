@@ -1,5 +1,5 @@
 // Pure progress logic for the ISO import (no I/O, no globals): stage weights, log-line parsing, overall percent, ETA.
-// Used by importer.cpp / webserver.cpp and by tests/host/import_progress_test.cpp on the host.
+// Used by webserver.cpp (Phase enum) and by tests/host/import_progress_test.cpp on the host.
 //
 // WEIGHTS ARE ESTIMATES. No import timing logs exist on this machine; the split below is a plausible default
 // (the goalc "(mi)" build of all game code is single threaded and dominates, level extraction second).

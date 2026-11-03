@@ -28,7 +28,7 @@ open(p, "w").write(s.replace(old, new))
 PY
 
 # link recipe: malloc wraps (app_heap.c), exceptions + RTTI for the engine's own sources
-sed -i 's/--eh-frame-hdr \\/--eh-frame-hdr --wrap=malloc --wrap=calloc --wrap=realloc --wrap=free --wrap=posix_memalign --wrap=malloc_usable_size --wrap=printf --wrap=clock_gettime --wrap=fopen \\/' "$APP/tools/build.sh"
+sed -i 's/--eh-frame-hdr \\/--eh-frame-hdr --wrap=malloc --wrap=calloc --wrap=realloc --wrap=free --wrap=posix_memalign --wrap=malloc_usable_size --wrap=printf --wrap=clock_gettime \\/' "$APP/tools/build.sh"
 sed -i 's/args+=(-fno-exceptions -fno-rtti)/args+=(-fexceptions -frtti)/' "$APP/tools/build.sh"
 cp "$SRC/tooling/native/ps5-pie.ld" "$APP/tooling/native/ps5-pie-base.ld"
 cp "$GL/native-app/ps5-pie.ld" "$APP/tooling/native/ps5-pie.ld"
@@ -60,7 +60,7 @@ cp "$HOME/ps5build/libgk.a" "$APP/vendor/libgk.a"
   printf 'EXTERN(main)\n'
   printf 'EXTERN(ps5_agc_gate2_run)\n'
   printf 'GROUP (\n'
-  printf '  "%s"\n' "$HOME/drv/out/ps5_screen.o" "$HOME/drv/out/ps5_agc_runtime_backend.o" "$HOME/drv/out/ps5_egl.o" "$APP/vendor/libgk.a" "$GLSDK/sdk/lib/libPS5OpenGL.a" "$HOME/ps5build_ext/libextractor.a" \
+  printf '  "%s"\n' "$HOME/drv/out/ps5_screen.o" "$HOME/drv/out/ps5_agc_runtime_backend.o" "$HOME/drv/out/ps5_egl.o" "$APP/vendor/libgk.a" "$GLSDK/sdk/lib/libPS5OpenGL.a" \
     "$SDK/target/lib/libunwind.a" "$SDK/target/lib/libc++abi.a" "$SDK/target/lib/libc++.a" "$RT"
   printf ')\n'
 } > "$APP/vendor/libog_group.a"

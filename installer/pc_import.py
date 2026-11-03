@@ -21,7 +21,7 @@ RELEASE = "v0.3.9"         # == engine/ports/upstream.lock commit b6c8430 (verif
 BASE = "https://github.com/open-goal/jak-project/releases/download/" + RELEASE + "/"
 # our toolchain pack (patched goal_src, game assets with the PS5 menu texts, precompiled game code): a release asset, pinned by hash
 PACK_NAME = "opengoal-ps5-pack.tgz"
-PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.3.2/" + PACK_NAME
+PACK_URL = "https://github.com/0iy/opengoal-ps5/releases/download/v0.3.3/" + PACK_NAME
 PACK_SIZE = 19616941
 PACK_SHA256 = "93abce32754fa0e22e7182ebf5fc77ce925f55c26ec26268701dffb9d4394541"
 TOOLS = {  # sizes/sha256 from the GitHub release API digests
@@ -30,7 +30,7 @@ TOOLS = {  # sizes/sha256 from the GitHub release API digests
     "macos-arm": ("opengoal-macos-arm-v0.3.9.tar.gz", 41239582, "613d7b2b2171fd1840c71b2928e1352ee1b5f2ec8df5a4ec76c1bfe91b926d42"),
     "macos-intel": ("opengoal-macos-intel-v0.3.9.tar.gz", 42486346, "7388d3f2a42b8cde8e0e83e0fe202dc5eba05239e68c4fdbd49f632c871f31ab"),
 }
-# serial -> (game, region, territory). Same list as app/shim/importer.cpp + webpage.cpp + the upstream extractor database.
+# serial -> (game, region, territory). Same list as installer/gui and the upstream extractor database.
 DISCS = {
     "SCUS-97124": ("jak1", "NTSC-U", "SCEA"), "SCES-50361": ("jak1", "PAL", "SCEE"), "SCPS-15021": ("jak1", "NTSC-J", "SCEI"),
     "SCPS-56003": ("jak1", "NTSC-K", "SCEA"), "SCUS-97265": ("jak2", "NTSC-U", "SCEA"), "SCES-51608": ("jak2", "PAL", "SCEE"),
@@ -141,7 +141,7 @@ class Reporter:
 
 # ---------------------------------------------------------------------------------------------------------- ISO detect
 def detect_iso(path):
-    """Structural check like app/shim/importer.cpp probe_fd (no hashing). Returns (serial, game, region, territory)."""
+    """Structural ISO check (no hashing). Returns (serial, game, region, territory)."""
     size = os.path.getsize(path)
     if size < (64 << 20):
         raise Fail("tiny", "file too small to be a disc")

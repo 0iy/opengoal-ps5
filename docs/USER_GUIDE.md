@@ -14,13 +14,15 @@ In game the original Jak controls apply. One game runs per start: choosing anoth
 
 ## Adding games (first start)
 
-1. The launcher shows a QR code and an address (`http://<PS5 address>:8080`). Open it on a phone or PC in the same network.
-2. Drop your `.iso` files (one or several). The page checks each file before upload: it must be an unmodified ISO of Jak 1, 2 or 3;
-   `.bin/.cue` and truncated copies are rejected with a reason.
-3. The console converts and compiles each game. Keep it on; this takes a few minutes per game. Closing the browser does not stop it.
-4. The game becomes playable in the launcher. Use **Settings > Add games** to open the page again.
+Games are added from a PC (Windows, macOS or Linux) in the same network.
 
-More detail: [`ONBOARDING_WEB.md`](ONBOARDING_WEB.md).
+1. The launcher shows a QR code and an address (`http://<PS5 address>:8080`). Open the address in a browser on the PC.
+2. Copy the line shown there for your system into PowerShell (Windows) or the Terminal (macOS, Linux) and press Enter.
+3. In the window that opens, choose your `.iso` files (unmodified images of Jak 1, 2 or 3) and press **Start**. The PC builds each game and sends it
+   to the PS5; Jak 3 takes about a minute.
+4. The game becomes playable in the launcher. **Settings > Add games** shows the address again.
+
+More detail: [`PC_IMPORT.md`](PC_IMPORT.md), the status page: [`ONBOARDING_WEB.md`](ONBOARDING_WEB.md).
 
 ## Settings
 

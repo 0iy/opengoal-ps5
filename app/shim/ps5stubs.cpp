@@ -39,24 +39,13 @@ void Replxx::enable_bracketed_paste(void) {}
 char const* Replxx::input(std::string const&) { return nullptr; }
 }  // namespace replxx
 
+// ---- import hooks of engine/patch_import_progress.py (weak in the engine; the console import that used them is gone) ----
+extern "C" int ps5_import_log(int, const char*) { return 0; }
+extern "C" void ps5_import_progress(int, long long, long long) {}
+
 // ---- file times ---------------------------------------------------------------------------------------
 extern "C" int utimensat(int, const char*, const struct timespec[2], int) {
   errno = ENOSYS;
   return -1;
 }
 
-// ---- xdbg (debugger of the desktop REPL; the extractor links the compiler, which references it) -----------
-#include "common/cross_os_debug/xdbg.h"
-namespace xdbg {
-ThreadID::ThreadID(const std::string& str) : id(pid_t(std::atoi(str.c_str()))) {}
-bool break_now(const ThreadID&) { return false; }
-bool cont_now(const ThreadID&) { return false; }
-bool single_step_now(const ThreadID&) { return false; }
-bool detach_and_resume(const ThreadID&) { return false; }
-bool get_regs_now(const ThreadID&, Regs*) { return false; }
-bool set_regs_now(const ThreadID&, const Regs&) { return false; }
-bool close_memory(const ThreadID&, MemoryHandle*) { return false; }
-bool read_goal_memory(u8*, int, u32, const DebugContext&, const MemoryHandle&) { return false; }
-bool write_goal_memory(const u8*, int, u32, const DebugContext&, const MemoryHandle&) { return false; }
-bool check_stopped(const ThreadID&, SignalInfo*) { return false; }
-}  // namespace xdbg

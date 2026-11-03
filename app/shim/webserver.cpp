@@ -1,17 +1,13 @@
-// Tiny HTTP server for the ISO import page.
-//   GET  /                    the import web page (embedded, see webpage.cpp)
+// Tiny HTTP server of the app: status page and the PC import. Games are built on the PC (installer/pc_import.py) and streamed here.
+//   GET  /                    the status web page (embedded, see webpage.cpp)
 //   GET  /api/status          JSON v3: per-game state, percent, speed, eta (see docs/ONBOARDING_WEB.md)
 //   GET  /api/events          the same JSON as a server-sent-events stream (4 updates per second)
-//   POST /api/begin?game=&total=&fp=&chunk=   start or RESUME the upload of that game (answers the finished chunk offsets)
-//   PUT  /api/chunk?game=&off=&total=         raw body written at offset `off` (parallel chunks welcome)
-//   POST /api/start?game=     finish the upload, pre-check the ISO, queue the import (imports run one after another)
-//   POST /api/cancel?game=    cancel upload / queue entry / running import, or dismiss a done/failed card
-//   GET|POST /api/settings[?delete_iso=0|1]   console-side settings
+//   POST /api/cancel?game=    cancel a running install, or dismiss a done/failed card
 //   GET  /api/info            capabilities (install_api version) so a PC client can check before it sends gigabytes
+//   GET  /api/log[?kb=N]      tail of the app log
 //   PUT  /api/install?game=&total=&mode=replace|add&serial=&region=   PC import stream (installer/pc_import.py, install_stream.h):
 //        unpacked while it arrives into /data/opengoal/<game>/data.new, verified (CRC32), then renamed to data (replace) or
-//        merged into data (add). One connection, no temp copy, no second pass.
-// Upload bodies are streamed straight into the final file with pwrite() in large reads, one thread per connection.
+//        merged into data (add). One connection, no temp copy, no second pass. One thread per connection.
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
@@ -45,28 +41,15 @@
 #include "install_stream.h"
 
 void ps5_log(const char* fmt, ...);
-extern "C" bool ps5_import_start(const char* game, const char* iso, const char* project);
-extern "C" int ps5_import_state();
-extern "C" int ps5_import_rc();
-extern "C" const char* ps5_import_stage();
-extern "C" int ps5_import_stage_id();
-extern "C" int ps5_import_stage_percent();
-extern "C" void ps5_import_cancel();
-extern "C" const char* ps5_import_reason();
-extern "C" const char* ps5_iso_probe(const char* path, char* serial12, char* game8, char* region8);
 extern "C" int sceSystemServicePowerTick(void) __attribute__((weak));  // keeps the console awake while busy (null if not linked)
 const char* ps5_web_page();
 
 namespace {
 
-constexpr const char* kImportDir = "/data/opengoal/import";
-constexpr const char* kSettingsFile = "/data/opengoal/config/delete_iso.txt";  // "0" = keep the ISO after the import
-constexpr unsigned long long kDefaultChunk = 32ull << 20;
 std::string g_ip = "0.0.0.0";
 
 using namespace ps5imp;  // Phase enum: IDLE..FAILED (same numbers as Ps5GameStatus::phase)
 const char* const kPhase[] = {"idle", "uploading", "verifying", "queued", "importing", "done", "failed"};
-const char* const kStageName[] = {"", "prepare", "extract", "decompile", "compile"};
 extern "C" bool ps5sdl_game_active();
 extern "C" unsigned ps5sdl_slow_frames();
 std::atomic<int> g_inst_kbps{5120};  // current write cap in KiB/s while a game runs
@@ -79,41 +62,23 @@ const char* const kTitles[3] = {"Jak and Daxter", "Jak II", "Jak 3"};
 
 struct GameSt {
   std::atomic<int> phase{IDLE};
-  std::atomic<unsigned long long> bytes{0}, total{0}, chunk{kDefaultChunk};
-  std::atomic<unsigned> speed{0};         // smoothed upload bytes/s (sampler thread)
-  std::atomic<long> t0{0}, t_end{0};      // import start / end, time(0)
-  std::atomic<long> up0{0}, last_io{0};   // upload start, last chunk activity
+  std::atomic<unsigned long long> bytes{0}, total{0};
+  std::atomic<unsigned> speed{0};         // smoothed install bytes/s (sampler thread)
+  std::atomic<long> t0{0}, t_end{0};      // install start / end, time(0)
+  std::atomic<long> last_io{0};           // last received data
   std::atomic<bool> cancelling{false};
   std::atomic<bool> installing{false};    // PC import stream in progress (phase is IMPORTING, stage "install")
   char err[24] = "";                      // reason key while phase == failed (guarded by g_mu)
   char serial[16] = "";
   char region[8] = "";
-  std::string fp;                         // client fingerprint of the file (guarded by g_mu)
-  std::set<unsigned long long> done;      // finished chunk offsets (guarded by g_mu)
   unsigned long long sample_bytes = 0;    // sampler state
   double sample_t = 0;
 };
 GameSt g_g[3];
 std::mutex g_mu;
-std::deque<int> g_queue;  // games waiting for the importer
-int g_cur = -1;           // game the importer is working on (guarded by g_mu)
-std::atomic<int> g_last_up{0};
 std::atomic<bool> g_installing{false};  // one PC install stream at a time
 
 int gidx(const std::string& g) { return g == "jak1" ? 0 : g == "jak2" ? 1 : g == "jak3" ? 2 : -1; }
-std::string path_of(const std::string& game, const char* ext) { return std::string(kImportDir) + "/" + game + ext; }
-void set_err(int i, const char* e) {
-  std::lock_guard<std::mutex> l(g_mu);
-  std::snprintf(g_g[i].err, sizeof g_g[i].err, "%s", e);
-  g_g[i].phase = FAILED;
-}
-bool delete_iso_setting() {
-  FILE* f = std::fopen(kSettingsFile, "r");
-  if (!f) return true;  // default on
-  const int c = std::fgetc(f);
-  std::fclose(f);
-  return c != '0';
-}
 double mono() {
   timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -191,30 +156,18 @@ void fill_locked(int i, Ps5GameStatus* o) {
   o->phase = ph;
   o->bytes = g.bytes.load();
   o->total = g.total.load();
-  const bool inst = ph == IMPORTING && g.installing.load();
-  o->speed_bps = (ph == UPLOADING || inst) ? g.speed.load() : 0;
+  const bool inst = ph == IMPORTING && g.installing.load();  // stage 0 = "Installing" in the launcher
+  o->speed_bps = inst ? g.speed.load() : 0;
   o->stage = 0;
   o->stage_percent = -1;
+  o->percent = ph == DONE ? 100 : -1;
+  o->eta_s = -1;
   if (inst) {
-    o->elapsed_s = int(now - g.t0.load());  // stage 0 = "Installing" in the launcher
-  } else if (ph == IMPORTING && g_cur == i) {
-    o->stage = ps5_import_stage_id();
-    o->stage_percent = ps5_import_stage_percent();
     o->elapsed_s = int(now - g.t0.load());
-  } else if (ph == IMPORTING) {
-    o->stage = PREPARE;
-  } else if (ph == UPLOADING) {
-    o->elapsed_s = g.up0.load() ? int(now - g.up0.load()) : 0;
+    o->percent = o->stage_percent = std::min(99, int(o->total ? 100.0 * double(o->bytes) / double(o->total) : 0));
+    o->eta_s = (o->speed_bps > 0 && o->total > o->bytes) ? int((o->total - o->bytes) / o->speed_bps) : -1;
   } else if ((ph == DONE || ph == FAILED) && g.t_end.load() && g.t0.load()) {
     o->elapsed_s = int(g.t_end.load() - g.t0.load());
-  }
-  const double up_frac = o->total ? double(o->bytes) / double(o->total) : 0;
-  o->percent = overall(i, ph, o->stage, o->stage_percent, up_frac);
-  if (ph == IMPORTING && o->stage == EXTRACT && o->stage_percent >= 0) o->stage_percent = std::min(o->stage_percent, 100);
-  o->eta_s = eta(ph, o->bytes, o->total, o->speed_bps, o->percent, o->elapsed_s);
-  if (inst) {
-    o->percent = o->stage_percent = std::min(99, int(100.0 * up_frac));
-    o->eta_s = (o->speed_bps > 0 && o->total > o->bytes) ? int((o->total - o->bytes) / o->speed_bps) : -1;
   }
   std::snprintf(o->serial, sizeof o->serial, "%s", g.serial);
   std::snprintf(o->region, sizeof o->region, "%s", g.region);
@@ -225,13 +178,9 @@ void fill_locked(int i, Ps5GameStatus* o) {
 std::string status_json() {
   std::lock_guard<std::mutex> l(g_mu);
   const long now = (long)time(nullptr);
-  const int ist = ps5_import_state();
   char b[768];
-  std::string j = std::string("{\"version\":3,\"ip\":\"") + g_ip + "\",\"busy\":" + (ist == 1 ? "true" : "false") + ",\"current\":\"" + (g_cur >= 0 ? kIds[g_cur] : "") + "\",\"queue\":[";
-  for (size_t k = 0; k < g_queue.size(); ++k) j += std::string(k ? "," : "") + "\"" + kIds[g_queue[k]] + "\"";
-  j += "],\"games\":{";
+  std::string j = std::string("{\"version\":3,\"ip\":\"") + g_ip + "\",\"busy\":" + (g_installing.load() ? "true" : "false") + ",\"games\":{";
   int sum = 0, n = 0, eta_sum = 0, eta_known = 0, eta_unknown = 0;
-  int cur_total_est = -1;
   for (int i = 0; i < 3; ++i) {
     Ps5GameStatus s;
     fill_locked(i, &s);
@@ -240,27 +189,20 @@ std::string status_json() {
     std::snprintf(b, sizeof b,
                   "%s\"%s\":{\"installed\":%s,\"phase\":\"%s\",\"stage\":\"%s\",\"percent\":%d,\"stage_percent\":%d,\"bytes\":%llu,\"total\":%llu,"
                   "\"speed\":%u,\"eta\":%d,\"elapsed\":%d,\"idle\":%ld,\"serial\":\"%s\",\"region\":\"%s\",\"reason\":\"%s\"}",
-                  i ? "," : "", kIds[i], s.installed ? "true" : "false", kPhase[s.phase], g.installing.load() ? "install" : kStageName[s.stage], s.percent, s.stage_percent,
+                  i ? "," : "", kIds[i], s.installed ? "true" : "false", kPhase[s.phase], g.installing.load() ? "install" : "", s.percent, s.stage_percent,
                   s.bytes, s.total, s.speed_bps, s.eta_s, s.elapsed_s, idle, s.serial, s.region, s.reason);
     j += b;
-    if (s.phase >= UPLOADING && s.phase <= DONE) {  // games of this session
+    if (s.phase == IMPORTING || s.phase == DONE) {  // games of this session
       ++n;
       sum += s.percent < 0 ? 0 : s.percent;
       if (s.phase != DONE) {
         if (s.eta_s >= 0) { eta_sum += s.eta_s; ++eta_known; }
         else ++eta_unknown;
       }
-      if (s.phase == IMPORTING && s.eta_s >= 0) cur_total_est = s.elapsed_s + s.eta_s;
     }
   }
-  // games that wait for the importer: assume they need as long as the running one
-  if (eta_unknown && cur_total_est > 0) { eta_sum += eta_unknown * cur_total_est; eta_unknown = 0; }
-  const GameSt& u = g_g[g_last_up.load()];
-  std::snprintf(b, sizeof b,
-                "},\"overall\":{\"games\":%d,\"percent\":%d,\"eta\":%d},\"settings\":{\"delete_iso\":%s},"
-                "\"upload\":{\"game\":\"%s\",\"bytes\":%llu,\"total\":%llu},\"import\":{\"state\":%d,\"rc\":%d,\"stage\":\"%s\",\"percent\":%d}}",
-                n, n ? sum / n : -1, (n && !eta_unknown && eta_known) ? eta_sum : -1, delete_iso_setting() ? "true" : "false", kIds[g_last_up.load()],
-                (unsigned long long)u.bytes.load(), (unsigned long long)u.total.load(), ist, ps5_import_rc(), ps5_import_stage(), ps5_import_stage_percent());
+  std::snprintf(b, sizeof b, "},\"overall\":{\"games\":%d,\"percent\":%d,\"eta\":%d}}", n, n ? sum / n : -1,
+                (n && !eta_unknown && eta_known) ? eta_sum : -1);
   return j + b;
 }
 
@@ -272,50 +214,6 @@ void mkdir_p(const char* path) {
   }
   mkdir(path, 0777);
   chmod(path, 0777);  // umask or another owner must not leave the folder unwritable for the game process
-}
-
-void remove_upload_files(const std::string& game) {
-  unlink(path_of(game, ".part").c_str());
-  unlink(path_of(game, ".meta").c_str());
-  unlink(path_of(game, ".done").c_str());
-}
-
-void remove_iso(const std::string& game) { unlink(path_of(game, ".iso").c_str()); }
-
-// ---- upload state on disk (resume) ----------------------------------------------------------------------------------
-// <game>.meta: "total chunk fp"; <game>.done: one finished chunk offset per line. Survives page reloads and app restarts.
-
-void write_meta(const std::string& game, unsigned long long total, unsigned long long chunk, const std::string& fp) {
-  if (FILE* f = std::fopen(path_of(game, ".meta").c_str(), "w")) {
-    std::fprintf(f, "%llu %llu %s\n", total, chunk, fp.c_str());
-    std::fclose(f);
-  }
-}
-
-bool read_meta(const std::string& game, unsigned long long* total, unsigned long long* chunk, std::string* fp) {
-  FILE* f = std::fopen(path_of(game, ".meta").c_str(), "r");
-  if (!f) return false;
-  char fpb[256] = "";
-  const int n = std::fscanf(f, "%llu %llu %255s", total, chunk, fpb);
-  std::fclose(f);
-  if (n < 2 || *chunk == 0) return false;
-  *fp = fpb;
-  return true;
-}
-
-void load_done(const std::string& game, std::set<unsigned long long>* out) {
-  out->clear();
-  if (FILE* f = std::fopen(path_of(game, ".done").c_str(), "r")) {
-    unsigned long long v;
-    while (std::fscanf(f, "%llu", &v) == 1) out->insert(v);
-    std::fclose(f);
-  }
-}
-
-unsigned long long done_bytes(const std::set<unsigned long long>& d, unsigned long long total, unsigned long long chunk) {
-  unsigned long long b = 0;
-  for (unsigned long long off : d) b += std::min(chunk, total > off ? total - off : 0ull);
-  return b;
 }
 
 // ---- PC install stream ----------------------------------------------------------------------------------------------
@@ -410,9 +308,9 @@ struct Writer {
     }
     return v;
   }
-  int op(char o, const void* p, uint32_t n) {  // 'O'/'U'/'R' wait for the answer, 'W'/'S' do not
+  int op(char o, const void* p, uint32_t n) {  // 'O' waits for the answer, 'W' does not
     if (!put(&o, 1) || !put(&n, 4) || !put(p, n)) return EPIPE;
-    return o == 'O' || o == 'U' || o == 'R' ? answer() : 0;
+    return o == 'O' ? answer() : 0;
   }
   int close_file() {
     const char c = 'C';
@@ -581,7 +479,7 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
   {
     std::lock_guard<std::mutex> l(g_mu);
     const int ph = g.phase.load();
-    busy = (ph == UPLOADING && g.last_io.load() && (long)time(nullptr) - g.last_io.load() < 10) || ph == VERIFYING || ph == QUEUED || ph == IMPORTING;
+    busy = ph == IMPORTING;
     if (!busy) {
       g.err[0] = 0;
       std::snprintf(g.serial, sizeof g.serial, "%s", serial.c_str());
@@ -590,7 +488,6 @@ void handle_install(int fd, int gi, const std::string& query, std::string& pendi
       g.t0 = (long)time(nullptr); g.t_end = 0; g.last_io = g.t0.load();
       g.cancelling = false; g.installing = true;
       g.phase = IMPORTING;
-      g_last_up = gi;
     }
   }
   if (busy) {
@@ -804,181 +701,12 @@ void* serve(void* arg) {
       } else if (method == "PUT" && path == "/api/install" && gi >= 0) {
         handle_install(fd, gi, query, pending, buf);
         goto done;
-      } else if (path == "/api/settings") {
-        const std::string v = query_value(query, "delete_iso");
-        if (method == "POST" && (v == "0" || v == "1")) {
-          mkdir_p("/data/opengoal/config");
-          if (FILE* f = std::fopen(kSettingsFile, "w")) { std::fputs(v.c_str(), f); std::fclose(f); }
-        }
-        respond(fd, 200, "application/json", status_json(), keep);
-      } else if (method == "POST" && path == "/api/begin" && gi >= 0) {
-        GameSt& g = g_g[gi];
-        const unsigned long long total = strtoull(query_value(query, "total").c_str(), nullptr, 10);
-        unsigned long long chunk = strtoull(query_value(query, "chunk").c_str(), nullptr, 10);
-        if (chunk < (1ull << 20) || chunk > (256ull << 20)) chunk = kDefaultChunk;
-        const std::string fp = query_value(query, "fp").substr(0, 200);
-        const int ph = g.phase.load();
-        mkdir_p(kImportDir);
-        if (total == 0) {
-          respond(fd, 400, "application/json", "{\"error\":\"total\"}", keep);
-        } else if (ph == VERIFYING || ph == QUEUED || ph == IMPORTING) {
-          respond(fd, 409, "application/json", "{\"error\":\"busy\"}", keep);
-        } else {
-          // resume when the same file (fingerprint, size, chunk size) was partly uploaded before
-          unsigned long long mt = 0, mc = 0;
-          std::string mfp;
-          struct stat pst;
-          const bool resume = !fp.empty() && read_meta(game, &mt, &mc, &mfp) && mt == total && mc == chunk && mfp == fp &&
-                              stat(path_of(game, ".part").c_str(), &pst) == 0 && (unsigned long long)pst.st_size == total;
-          std::string offs;
-          if (resume) {
-            std::lock_guard<std::mutex> l(g_mu);
-            if (g.phase.load() != UPLOADING || g.fp != fp) load_done(game, &g.done);
-            g.bytes = done_bytes(g.done, total, chunk);
-            for (unsigned long long o : g.done) offs += (offs.empty() ? "" : ",") + std::to_string(o);
-          } else {
-            // no free-space probe: statvfs crashes on the PS5 SDK (stub); a full disk shows up as a write error (409 io / failed)
-            const bool low = false;
-            if (low) { respond(fd, 409, "application/json", "{\"error\":\"no_space\"}", keep); goto next; }
-            remove_upload_files(game);
-            int out = open(path_of(game, ".part").c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            if (out < 0) {
-              const int e = errno;
-              const std::string pp = path_of(game, ".part");
-              ps5_log("upload: %s cannot create %s: errno %d (%s)", game.c_str(), pp.c_str(), e, strerror(e));
-              char eb[400];
-              std::snprintf(eb, sizeof eb, "{\"error\":\"io\",\"errno\":%d,\"why\":\"%s\",\"where\":\"open %.200s\"}", e, strerror(e), pp.c_str());
-              respond(fd, 409, "application/json", eb, keep);
-              goto next;
-            }
-            if (ftruncate(out, off_t(total)) != 0) {}  // sparse preallocation: chunks arrive out of order
-            close(out);
-            write_meta(game, total, chunk, fp.empty() ? "-" : fp);
-            std::lock_guard<std::mutex> l(g_mu);
-            g.done.clear();
-            g.bytes = 0;
-          }
-          g.total = total;
-          g.chunk = chunk;
-          g_last_up = gi;
-          {
-            std::lock_guard<std::mutex> l(g_mu);
-            g.err[0] = 0; g.serial[0] = 0; g.region[0] = 0;
-            g.fp = fp;
-          }
-          g.speed = 0;
-          g.sample_bytes = g.bytes.load();
-          g.up0 = (long)time(nullptr);
-          g.last_io = (long)time(nullptr);
-          g.cancelling = false;
-          g.phase = UPLOADING;
-          respond(fd, 200, "application/json", std::string("{\"resume\":[") + offs + "],\"chunk\":" + std::to_string(chunk) + ",\"status\":" + status_json() + "}", keep);
-        }
-      } else if (method == "PUT" && path == "/api/chunk" && gi >= 0) {
-        GameSt& g = g_g[gi];
-        unsigned long long off = strtoull(query_value(query, "off").c_str(), nullptr, 10);
-        if (g.phase.load() != UPLOADING) { respond(fd, 409, "text/plain", "no upload in progress", false); goto done; }
-        // the chunks go through the writer payload too (an ISO is 4 to 8 GB, far past the ~1.3 GB the console lets the app write fast)
-        Writer wr;
-        const std::string part = path_of(game, ".part");
-        const bool remote = wr.connect_local() && wr.op('U', part.data(), uint32_t(part.size())) == 0;
-        int out = remote ? 0 : open(part.c_str(), O_WRONLY, 0666);  // created by /api/begin
-        if (out < 0) { respond(fd, 400, "text/plain", "cannot open file", false); goto done; }
-        auto put_at = [&](const char* p, size_t n, unsigned long long at) {
-          if (!remote) return pwrite(out, p, n, off_t(at)) == ssize_t(n);
-          const uint64_t o = at;
-          return wr.op('S', &o, 8) == 0 && wr.op('W', p, uint32_t(n)) == 0;
-        };
-        const unsigned long long total = g.total.load(), chunk = g.chunk.load();
-        const unsigned long long want_len = off < total ? std::min(chunk, total - off) : 0;
-        unsigned long long left = clen, pos = off, written = 0;
-        bool ok = off < total && off + clen <= total;
-        if (ok && !pending.empty()) {  // body bytes that arrived with the head
-          size_t n = pending.size() < left ? pending.size() : size_t(left);
-          if (!put_at(pending.data(), n, pos)) ok = false;
-          pos += n; left -= n; written += n; g.bytes += n;
-          pending.erase(0, n);
-        }
-        while (ok && left) {
-          if (g.phase.load() != UPLOADING) { ok = false; break; }  // cancelled meanwhile
-          size_t want = left < buf.size() ? size_t(left) : buf.size();
-          ssize_t r = recv(fd, buf.data(), want, 0);
-          if (r <= 0) { ok = false; break; }
-          if (!put_at(buf.data(), size_t(r), pos)) { ok = false; break; }
-          pos += size_t(r); left -= size_t(r); written += size_t(r); g.bytes += size_t(r);
-          g.last_io = (long)time(nullptr);
-        }
-        if (remote) { if (wr.close_file()) ok = false; } else close(out);
-        if (!ok) {
-          g.bytes -= std::min<unsigned long long>(written, g.bytes.load());  // the half chunk is sent again
-          goto done;
-        }
-        {
-          std::lock_guard<std::mutex> l(g_mu);
-          if (clen == want_len && off % chunk == 0) {
-            if (!g.done.insert(off).second) {
-              g.bytes -= std::min<unsigned long long>(written, g.bytes.load());  // duplicate of a finished chunk
-            } else if (FILE* f = std::fopen(path_of(game, ".done").c_str(), "a")) {
-              std::fprintf(f, "%llu\n", off);
-              std::fclose(f);
-            }
-          } else {
-            g.bytes -= std::min<unsigned long long>(written, g.bytes.load());  // odd-sized piece: not resumable, not counted
-          }
-        }
-        respond(fd, 204, "text/plain", "", keep);
-      } else if (method == "POST" && path == "/api/start" && gi >= 0) {
-        GameSt& g = g_g[gi];
-        bool complete;
-        {
-          std::lock_guard<std::mutex> l(g_mu);
-          const unsigned long long total = g.total.load(), chunk = g.chunk.load();
-          complete = g.phase.load() == UPLOADING && g.done.size() == (total + chunk - 1) / chunk;
-        }
-        int expect = UPLOADING;
-        if (!complete) {
-          respond(fd, 409, "application/json", status_json(), keep);
-        } else if (!g.phase.compare_exchange_strong(expect, VERIFYING)) {
-          respond(fd, 409, "application/json", status_json(), keep);
-        } else {
-          std::string part = path_of(game, ".part"), iso = path_of(game, ".iso");
-          char serial[16], gm[8], region[8];
-          rename(part.c_str(), iso.c_str());
-          unlink(path_of(game, ".meta").c_str());
-          unlink(path_of(game, ".done").c_str());
-          const char* bad = ps5_iso_probe(iso.c_str(), serial, gm, region);
-          if (!bad && game != gm) bad = "wrong_game";
-          if (bad) {
-            unlink(iso.c_str());
-            set_err(gi, bad);
-            respond(fd, 422, "application/json", status_json(), keep);
-          } else {
-            {
-              std::lock_guard<std::mutex> l(g_mu);
-              std::snprintf(g.serial, sizeof g.serial, "%s", serial);
-              std::snprintf(g.region, sizeof g.region, "%s", region);
-              g_queue.push_back(gi);
-              g.phase = QUEUED;
-            }
-            respond(fd, 200, "application/json", status_json(), keep);
-          }
-        }
       } else if (method == "POST" && path == "/api/cancel" && gi >= 0) {
         GameSt& g = g_g[gi];
         std::lock_guard<std::mutex> l(g_mu);
         const int ph = g.phase.load();
-        if (ph == UPLOADING) {
-          g.phase = IDLE;  // in-flight chunk requests notice this and stop
-          g.bytes = 0;
-          g.done.clear();
-          remove_upload_files(game);
-        } else if (ph == QUEUED) {
-          g_queue.erase(std::remove(g_queue.begin(), g_queue.end(), gi), g_queue.end());
-          remove_iso(game);
-          g.phase = IDLE;
-        } else if (ph == IMPORTING) {
-          g.cancelling = true;
-          if (g_cur == gi) ps5_import_cancel();
+        if (ph == IMPORTING) {
+          g.cancelling = true;  // the install loop stops at the next read
         } else if (ph == DONE || ph == FAILED) {
           g.phase = IDLE;
         }
@@ -986,7 +714,6 @@ void* serve(void* arg) {
       } else {
         respond(fd, 404, "text/plain", "not found", keep);
       }
-    next:
       if (!keep) goto done;
     }
   }
@@ -995,17 +722,16 @@ done:
   return nullptr;
 }
 
-// Runs the queued imports one after another, records each result, samples the upload speed.
-void* queue_loop(void*) {
+// Samples the install speed and keeps the console awake while a game installs.
+void* speed_loop(void*) {
   int tick = 0;
   for (;;) {
     usleep(200 * 1000);
-    const int ist = ps5_import_state();
     const double now_m = mono();
     std::lock_guard<std::mutex> l(g_mu);
-    for (int i = 0; i < 3; ++i) {  // upload speed: exponential average over ~1 s
+    for (int i = 0; i < 3; ++i) {  // exponential average over ~1 s
       GameSt& g = g_g[i];
-      if (g.phase.load() != UPLOADING && !g.installing.load()) { g.speed = 0; g.sample_t = 0; continue; }
+      if (!g.installing.load()) { g.speed = 0; g.sample_t = 0; continue; }
       const unsigned long long b = g.bytes.load();
       if (g.sample_t > 0 && now_m > g.sample_t) {
         const double v = (b >= g.sample_bytes ? double(b - g.sample_bytes) : 0.0) / (now_m - g.sample_t);
@@ -1014,31 +740,7 @@ void* queue_loop(void*) {
       g.sample_bytes = b;
       g.sample_t = now_m;
     }
-    if (++tick % 50 == 0 && sceSystemServicePowerTick && (ist == 1 || g_cur >= 0)) sceSystemServicePowerTick();  // every 10 s while busy
-    if (g_cur >= 0 && (ist == 2 || ist == 3)) {
-      GameSt& g = g_g[g_cur];
-      g.t_end = (long)time(nullptr);
-      if (ist == 2) {
-        g.phase = DONE;
-      } else {
-        std::snprintf(g.err, sizeof g.err, "%s", ps5_import_reason()[0] ? ps5_import_reason() : "extract");
-        g.phase = FAILED;
-      }
-      g.cancelling = false;
-      if (delete_iso_setting()) remove_iso(kIds[g_cur]);  // free the space whatever the outcome
-      g_cur = -1;
-    }
-    if (g_cur < 0 && ist != 1 && !g_queue.empty()) {
-      const int i = g_queue.front();
-      const std::string iso = path_of(kIds[i], ".iso"), proj = std::string("/data/opengoal/proj_") + kIds[i];
-      g_g[i].t0 = (long)time(nullptr);
-      g_g[i].t_end = 0;
-      if (ps5_import_start(kIds[i], iso.c_str(), proj.c_str())) {
-        g_queue.pop_front();
-        g_cur = i;
-        g_g[i].phase = IMPORTING;
-      }
-    }
+    if (++tick % 50 == 0 && sceSystemServicePowerTick && g_installing.load()) sceSystemServicePowerTick();  // every 10 s while busy
   }
   return nullptr;
 }
@@ -1056,7 +758,7 @@ void* accept_loop(void* arg) {
     ps5_log("web: bind/listen on port %d failed", port);
     return nullptr;
   }
-  ps5_log("web: import page on port %d", port);
+  ps5_log("web: status page on port %d", port);
   for (;;) {
     int fd = accept(ls, nullptr, nullptr);
     if (fd < 0) continue;
@@ -1068,25 +770,6 @@ void* accept_loop(void* arg) {
     else close(fd);
   }
   return nullptr;
-}
-
-// After an app restart: pick up half-finished uploads so the page shows them and the same file can resume.
-void restore_uploads() {
-  for (int i = 0; i < 3; ++i) {
-    unsigned long long total = 0, chunk = 0;
-    std::string fp;
-    struct stat st;
-    if (!read_meta(kIds[i], &total, &chunk, &fp) || stat(path_of(kIds[i], ".part").c_str(), &st) != 0 || (unsigned long long)st.st_size != total) continue;
-    GameSt& g = g_g[i];
-    std::lock_guard<std::mutex> l(g_mu);
-    load_done(kIds[i], &g.done);
-    g.total = total;
-    g.chunk = chunk;
-    g.fp = fp;
-    g.bytes = done_bytes(g.done, total, chunk);
-    g.phase = UPLOADING;  // stalled until the page re-sends the file (status "idle" seconds grow)
-    g_last_up = i;
-  }
 }
 
 }  // namespace
@@ -1108,21 +791,13 @@ extern "C" void ps5_web_start(int port, const char* ip) {
       freeifaddrs(ifa);
     }
   }
-  restore_uploads();
   pthread_t th;
   pthread_create(&th, nullptr, accept_loop, reinterpret_cast<void*>(intptr_t(port)));
   pthread_detach(th);
-  if (pthread_create(&th, nullptr, queue_loop, nullptr) == 0) pthread_detach(th);
+  if (pthread_create(&th, nullptr, speed_loop, nullptr) == 0) pthread_detach(th);
 }
 
 extern "C" const char* ps5_web_ip() { return g_ip.c_str(); }
-extern "C" void ps5_web_progress(unsigned long long* bytes, unsigned long long* total, char* game16) {
-  const GameSt& g = g_g[g_last_up.load()];
-  *bytes = g.bytes.load();
-  *total = g.total.load();
-  std::snprintf(game16, 16, "%s", kIds[g_last_up.load()]);
-}
-
 // ---- stable C API for the launcher (include/ps5import.h) ------------------------------------------------------------
 extern "C" bool ps5_web_installing() { return g_installing.load(); }  // a PC import stream is writing a game right now
 
@@ -1136,35 +811,14 @@ extern "C" int ps5_game_status(const char* game, Ps5GameStatus* out) {
 
 extern "C" const char* ps5_import_queue_text() {
   static std::string t;  // no thread_local: the PS5 SDK has no __cxa_thread_atexit_impl; guarded by g_mu
-  static const char* const kVerb[] = {"", "preparing", "unpacking", "decompiling", "compiling"};
   std::lock_guard<std::mutex> l(g_mu);
   t.clear();
-  int pick = -1;
   for (int i = 0; i < 3; ++i)
-    if (g_g[i].phase.load() == IMPORTING) pick = i;
-  if (pick < 0)
-    for (int i = 0; i < 3; ++i)
-      if (g_g[i].phase.load() == UPLOADING || g_g[i].phase.load() == VERIFYING) pick = i;
-  if (pick >= 0) {
-    Ps5GameStatus s;
-    fill_locked(pick, &s);
-    char b[96];
-    if (s.phase == IMPORTING && g_g[pick].installing.load()) {
-      std::snprintf(b, sizeof b, "%s: installing %d%%", kTitles[pick], s.percent < 0 ? 0 : s.percent);
-    } else if (s.phase == IMPORTING) {
-      const char* v = kVerb[s.stage];
-      if (s.stage_percent >= 0) std::snprintf(b, sizeof b, "%s: %s %d%%", kTitles[pick], v, s.stage_percent);
-      else std::snprintf(b, sizeof b, "%s: %s", kTitles[pick], v[0] ? v : "starting");
-    } else if (s.phase == UPLOADING) {
-      std::snprintf(b, sizeof b, "%s: uploading %d%%", kTitles[pick], s.percent < 0 ? 0 : int(s.total ? 100 * s.bytes / s.total : 0));
-    } else {
-      std::snprintf(b, sizeof b, "%s: checking disc", kTitles[pick]);
+    if (g_g[i].phase.load() == IMPORTING && g_g[i].installing.load()) {
+      Ps5GameStatus s;
+      fill_locked(i, &s);
+      t = std::string(kTitles[i]) + ": installing " + std::to_string(s.percent < 0 ? 0 : s.percent) + "%";
     }
-    t = b;
-    if (!g_queue.empty()) t += " (+" + std::to_string(g_queue.size()) + " waiting)";
-  } else if (!g_queue.empty()) {
-    t = std::string(kTitles[g_queue.front()]) + ": waiting";
-  }
   return t.c_str();
 }
 
@@ -1178,24 +832,4 @@ extern "C" bool ps5_install_notice_state(int* game, int* pct, int* kbps) {
   *pct = t ? int(b * 100 / t) : 0;
   *kbps = g_inst_kbps.load();
   return true;
-}
-
-// fopen of a new file below /data/opengoal/jak1|jak2|jak3|proj_jak* (linked with --wrap=fopen): the import on the console (extractor, decompiler,
-// ISO copies; several GB) writes through the writer payload too, because the console throttles this process after ~1.3 GB.
-// Everything else, and every fopen when the writer cannot be reached, goes to the real fopen.
-extern "C" FILE* __real_fopen(const char* path, const char* mode);
-extern "C" FILE* __wrap_fopen(const char* path, const char* mode) {
-  // game folders and the console import's project folders (proj_jak1 ..., extractor + decompiler output)
-  const bool game_dir = path && (!strncmp(path, "/data/opengoal/jak1/", 20) || !strncmp(path, "/data/opengoal/jak2/", 20) ||
-                                 !strncmp(path, "/data/opengoal/jak3/", 20) || !strncmp(path, "/data/opengoal/proj_jak", 23));
-  if (!game_dir || !mode || mode[0] != 'w' || strchr(mode, '+')) return __real_fopen(path, mode);
-  // writer stream mode ('R'): the socket itself becomes the FILE*, fclose ends the file. No fseek on these (the import writes
-  // sequentially); a failure on the console side shows up as a failed fwrite/fclose.
-  Writer w;
-  if (!w.connect_local() || w.op('R', path, uint32_t(strlen(path)))) return __real_fopen(path, mode);
-  FILE* fp = fdopen(w.s, "wb");
-  if (!fp) return __real_fopen(path, mode);
-  w.s = -1;  // owned by the FILE now
-  setvbuf(fp, nullptr, _IOFBF, 64 << 10);  // 1 MB per FILE ran the app heap out of memory (the extractor keeps many files open)
-  return fp;
 }

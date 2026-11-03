@@ -101,7 +101,7 @@ Third-party checkouts are git-ignored. Do not commit game data, firmware, keys o
 | `wsl_snapshot/jak-project_*` | removed (`tools/ps5 sync snapshot` regenerates it) |
 | `m0/`, `m1/` | `payloads/` (experiments and diagnostic ELFs removed) |
 | `ps5.py` | `tools/console.py` (used by `tools/ps5`) |
-| `ps5cfg.py`, `dbg.py`, `rplay.py`, `perfround.py`, `shotseries.py`, `shotdiff.py`, `qa_pipeline.py`, `upload_iso_web.py`, `symlookup.py`, `ps5dbg_maps.py` | `tools/` |
+| `ps5cfg.py`, `dbg.py`, `rplay.py`, `perfround.py`, `shotseries.py`, `shotdiff.py`, `qa_pipeline.py`, `symlookup.py`, `ps5dbg_maps.py` | `tools/` |
 | `perf_suite.sh` | `tools/perf_suite.py` |
 | `trace2json.py`, `trace_stages.py`, `trace_mip.py`, `multidraw_report.py` | `tools/trace/stats.py`, `stages.py`, `mip.py`, `multidraw.py` |
 | `at9enc/` | `tools/at9enc/` |

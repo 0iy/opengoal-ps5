@@ -1,4 +1,4 @@
-// Stable C API between the ISO import/onboarding code (importer.cpp, webserver.cpp) and the launcher UI.
+// Stable C API between the install code (webserver.cpp) and the launcher UI.
 #pragma once
 
 struct Ps5GameStatus {

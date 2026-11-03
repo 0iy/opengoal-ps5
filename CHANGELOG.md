@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3 (2026-11-03)
+
+### Removed
+- The console-side ISO upload and console import (web upload endpoints, import queue, the on-console extractor and its 9 MB in the app, the fopen redirect for it). The app is now 33 MB instead of 42 MB. Games are added from the PC only (since 0.3.2)
+
+### Changed
+- A game can be started from the launcher while another game installs from the PC (the old rule "no Play while importing" was for the on-console extractor)
+
 ## 0.3.2 (2026-11-03)
 
 ### Changed

@@ -42,7 +42,7 @@ GPL-3.0-or-later. All of these allow that.
 ### OpenGOAL / jak-project 553a713 (v0.3.6) and what it vendors
 
 ISC, Copyright (c) 2020-2026 OpenGOAL Team. The third-party code inside the tree keeps its own licence (on disk under `~/jak/third-party/`, listing
-libraries that the PS5 targets, `gk` and the on-console extractor/compiler, compile or include):
+libraries that the PS5 target `gk` compiles or includes):
 
 | Library | Licence | Verified |
 |---|---|---|
@@ -63,10 +63,6 @@ libraries that the PS5 targets, `gk` and the on-console extractor/compiler, comp
 | BS::thread_pool | MIT | header |
 | ghc::filesystem (`filesystem.hpp`) | MIT | header |
 | dragonbox (part of fmt's number formatting) | Apache-2.0 WITH LLVM-exception OR BSL-1.0 | header |
-| xdelta3 (extractor) | Apache-2.0 | on disk `xdelta3/README.md` |
-| capstone 6.0.0-Alpha10 (extractor) | BSD-3-Clause; some files LLVM Apache-2.0 WITH LLVM-exception | on disk `capstone/LICENSES/` |
-| zydis (extractor) | MIT, Copyright (c) 2014-2024 Florian Bernd | on disk `zydis/LICENSE` |
-| tree-sitter and tree-sitter-opengoal grammar (extractor) | MIT | on disk `tree-sitter/tree-sitter/LICENSE`; GitHub open-goal/tree-sitter-opengoal: MIT |
 | SDL_GameControllerDB (`game/assets/sdl_controller_db.txt`, packed into `skeleton.tar.zst`) | zlib | file header; GitHub mdqinc/SDL_GameControllerDB: Zlib |
 | Noto Sans JP | SIL OFL 1.1 | see 1. |
 
@@ -84,7 +80,7 @@ Not built for the PS5 (excluded by `engine/gen_ps5_ninja.py`): SDL itself, curl,
 | `libSceAgc.so`, `libSceAgcDriver.so` link stubs | GPL-3.0-or-later (built from `native-app/agc_*_link_stub.c` of ps5-opengl); contain no Sony code, only import names | same SDK | on disk |
 
 The SDK also contains Dear ImGui, NanoVG, Sokol, VK-GL-CTS examples and the SDL2 PS5 fork. None of them is linked into the app (the link group is
-`ps5_screen.o`, `ps5_agc_runtime_backend.o`, `ps5_egl.o`, `libgk.a`, `libPS5OpenGL.a`, `libextractor.a`, libunwind, libc++abi, libc++, compiler-rt builtins).
+`ps5_screen.o`, `ps5_agc_runtime_backend.o`, `ps5_egl.o`, `libgk.a`, `libPS5OpenGL.a`, libunwind, libc++abi, libc++, compiler-rt builtins).
 
 The original `github.com/blackbearreloaded` account no longer exists (HTTP 404, checked 2026-10-24), so the original repository links are gone. The SDK is
 the archive with the sha256 above; verified mirrors with identical release assets: `JVK3R/ps5-opengl` (v1.0.0). The licence travels inside the archive

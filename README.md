@@ -105,7 +105,7 @@ Real feedback is the most useful thing right now, also when everything worked.
 | Setup says a suspended copy blocks the start | close the game on the PS5 (home screen, Options, Close Game); if it stays, restart the jailbreak chain and run the setup again |
 | App refused at start (`0x80020008`) | OnionHEN was loaded first; restart the jailbreak chain without it |
 | Black screen or crash in game | turn off draw merging or async submit in the launcher settings, restart the app |
-| Import stops | keep the console awake, check the free disk space, see [`docs/ONBOARDING_WEB.md`](docs/ONBOARDING_WEB.md) |
+| Import stops | keep the console awake, check the free disk space, see [`docs/PC_IMPORT.md`](docs/PC_IMPORT.md) |
 | Everything silent after rest mode | run the exploit and the loader again; ports 2121 and 9021 may survive, the app may not |
 
 More: [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md).

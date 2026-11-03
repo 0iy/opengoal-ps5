@@ -80,9 +80,6 @@ std::string g_shot;
 extern "C" void ps5_glfix_set_limit(int);
 extern "C" void ps5_glfix_trace();
 extern "C" void ps5_pad_inject(unsigned buttons, unsigned ms);
-extern "C" bool ps5_import_start(const char* game, const char* iso, const char* project);
-extern "C" int ps5_import_state();
-extern "C" int ps5_import_rc();
 extern "C" void ps5_stick_inject(unsigned lx, unsigned ly, unsigned ms);
 extern "C" void ps5_glfix_set_skip(int);
 extern "C" void ps5_glfix_set_skip_range(int, int);
@@ -142,8 +139,6 @@ bool dbg_handle(int fd, const std::string& line) {
   if (line.rfind("skiprange ", 0) == 0) { int a = 0, b = 0; std::sscanf(line.c_str() + 10, "%d %d", &a, &b); ps5_glfix_set_skip_range(a, b); return dbg_reply(fd, "R skiprange " + std::to_string(a) + " " + std::to_string(b) + std::string(chr_nl())); }
   if (line.rfind("skip ", 0) == 0) { ps5_glfix_set_skip(std::atoi(line.c_str() + 5)); return dbg_reply(fd, "R draws/frame=" + std::to_string(ps5_glfix_draw_total()) + std::string(chr_nl())); }
   if (line.rfind("stick ", 0) == 0) { unsigned lx = 128, ly = 128, ms = 0; std::sscanf(line.c_str() + 6, "%u %u %u", &lx, &ly, &ms); ps5_stick_inject(lx, ly, ms); return dbg_reply(fd, "R stick" + std::string(chr_nl())); }
-  if (line.rfind("import ", 0) == 0) { char game[16] = {0}, iso[512] = {0}; std::sscanf(line.c_str() + 7, "%15s %511s", game, iso); std::string proj = std::string("/data/opengoal/proj_") + game; bool ok = ps5_import_start(game, iso, proj.c_str()); return dbg_reply(fd, std::string(ok ? "R import started " : "R import busy ") + proj + std::string(chr_nl())); }
-  if (line == "importstate") { return dbg_reply(fd, "R import state=" + std::to_string(ps5_import_state()) + " rc=" + std::to_string(ps5_import_rc()) + std::string(chr_nl())); }
   if (line.rfind("mark ", 0) == 0) { ps5_log("mark: %s", line.c_str() + 5); return dbg_reply(fd, "R mark" + std::string(chr_nl())); }
   if (line.rfind("press ", 0) == 0) { unsigned btn = 0, ms = 0; std::sscanf(line.c_str() + 6, "%x %u", &btn, &ms); ps5_pad_inject(btn, ms); return dbg_reply(fd, "R press" + std::string(chr_nl())); }
   if (line == "trace") { ps5_glfix_trace(); return dbg_reply(fd, "R tracing next frame" + std::string(chr_nl())); }

@@ -11,7 +11,7 @@ CFG = os.path.join(HOME, "config.json")
 PORT = int(os.environ.get("OGPS5_PORT", "8080"))
 DE = (os.environ.get("OGPS5_LANG") or (locale.getlocale()[0] or "")).lower().startswith("de")
 GAMES = {"jak1": "Jak and Daxter", "jak2": "Jak II", "jak3": "Jak 3"}
-DISCS = {  # same table as app/shim/importer.cpp
+DISCS = {  # same table as installer/pc_import.py
     "SCUS-97124": ("jak1", "NTSC-U"), "SCES-50361": ("jak1", "PAL"), "SCPS-15021": ("jak1", "NTSC-J"), "SCPS-56003": ("jak1", "NTSC-K"),
     "SCUS-97265": ("jak2", "NTSC-U"), "SCES-51608": ("jak2", "PAL"), "SCPS-15057": ("jak2", "NTSC-J"), "SCKA-20010": ("jak2", "NTSC-K"),
     "SCUS-97330": ("jak3", "NTSC-U"), "SCUS-97516": ("jak3", "NTSC-U"), "SCES-52460": ("jak3", "PAL"), "SCKA-20040": ("jak3", "NTSC-K")}

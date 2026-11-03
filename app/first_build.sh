@@ -19,15 +19,11 @@ python3 "$HERE/engine/gen_ps5_ninja.py" || exit 1
 ( cd "$HOME/ps5build" && ninja -k 0 -j "$(nproc)" 2>&1 | grep -E 'FAILED|error:' | head -30 )
 test -s ps5build/libgk.a || { echo "libgk.a missing"; exit 1; }
 
-step 3 "game extractor archive (ISO import on the console)"
-python3 "$HERE/engine/gen_ps5_extractor.py" || exit 1
-( cd "$HOME/ps5build_ext" && ninja -k 0 -j "$(nproc)" 2>&1 | grep -E 'FAILED|error:' | head -30 )
-
-step 4 "graphics driver objects"
+step 3 "graphics driver objects"
 bash "$HERE/driver/build/setup.sh" || exit 1
 bash "$HERE/driver/build/drv_cc_cache.sh" && bash "$HERE/driver/build/drv_cc_backend.sh" && bash "$HERE/driver/build/drv_cc_egl.sh" || exit 1
 
-step 5 "app packaging tree and eboot.bin"
+step 4 "app packaging tree and eboot.bin"
 bash "$HERE/app/setup_ogapp.sh" || exit 1
 bash "$HERE/app/rebuild_all.sh" || exit 1
 ls -la "$HOME/ogapp/dist/LAPY77001/"

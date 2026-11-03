@@ -58,7 +58,6 @@ SHIM_SOURCES = [
     "insttest.cpp",
     "launcher.cpp",
     "launcher_assets.cpp",
-    "importer.cpp",
     "webserver.cpp",
     "webpage.cpp",
     "qr.cpp",

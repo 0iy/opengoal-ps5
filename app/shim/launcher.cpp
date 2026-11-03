@@ -27,10 +27,7 @@ void ps5_log(const char* fmt, ...);
 int ps5_qr_encode(const char* text, std::vector<uint8_t>* modules);
 extern "C" void ps5_web_start(int port, const char* ip);
 extern "C" const char* ps5_web_ip();
-extern "C" void ps5_web_progress(unsigned long long* bytes, unsigned long long* total, char* game16);
-extern "C" int ps5_import_state();
-extern "C" int ps5_import_rc();
-extern "C" const char* ps5_import_stage();
+extern "C" bool ps5_web_installing();
 extern "C" bool ps5sdl_handoff_requested();
 extern "C" void ps5sdl_launcher_owns_context(bool on);
 extern "C" void ps5sdl_release_context_for_engine();
@@ -244,7 +241,7 @@ void centered(ImDrawList* dl, float size, float cx, float y, ImU32 col, const ch
 
 enum Str {
   S_TITLE, S_LEAD, S_STEP1, S_STEP2, S_STEP3, S_ADDR, S_WAIT, S_RECV, S_EXTRACT, S_DECOMP, S_COMPILE, S_DONE, S_FAIL,
-  S_KEEPON, S_HINT, S_ADD_ROW, S_LANG_ROW, S_MISSING, S_LOADING, S_PREPARE, S_BUSY, S_COUNT
+  S_KEEPON, S_HINT, S_ADD_ROW, S_LANG_ROW, S_MISSING, S_LOADING, S_PREPARE, S_COUNT
 };
 const char* const kText[2][S_COUNT] = {
     {"Add your games",
@@ -256,7 +253,7 @@ const char* const kText[2][S_COUNT] = {
      "Building the game...", "Done! Go back and press Play.",
      "Import failed. Is it an unmodified .iso of this game?",
      "Keep the console on. This takes a few minutes.", "Square: language     Circle: back",
-     "Add games (import ISO)", "Language", "Game data missing - press Cross to add it", "Loading...", "Preparing tools...", "A game is being imported. Wait until it is done."},
+     "Add games (import ISO)", "Language", "Game data missing - press Cross to add it", "Loading...", "Preparing tools..."},
     {"Spiele hinzufügen",
      "Spiele werden von einem PC (Windows, macOS oder Linux) im selben Netz installiert. Deine Discs bleiben zu Hause.",
      "1.  Öffne auf einem PC im selben Netz die Adresse unten im Browser.",
@@ -266,7 +263,7 @@ const char* const kText[2][S_COUNT] = {
      "Spiel wird gebaut...", "Fertig! Geh zurück und drücke Spielen.",
      "Import fehlgeschlagen. Ist es eine unveränderte .iso dieses Spiels?",
      "Lass die Konsole an. Das dauert einige Minuten.", "Quadrat: Sprache     Kreis: zurück",
-     "Spiele hinzufügen (ISO importieren)", "Sprache", "Spieldaten fehlen - Kreuz drücken zum Hinzufügen", "Lade...", "Werkzeuge werden vorbereitet...", "Ein Spiel wird gerade importiert. Warte, bis es fertig ist."},
+     "Spiele hinzufügen (ISO importieren)", "Sprache", "Spieldaten fehlen - Kreuz drücken zum Hinzufügen", "Lade...", "Werkzeuge werden vorbereitet..."},
 };
 const char* tr(Str s) { return kText[g_settings.lang ? 1 : 0][s]; }
 const char* L(const char* en, const char* de) { return g_settings.lang ? de : en; }
@@ -526,10 +523,7 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
       if (press && focus == 1) { scr.id = Screen::Settings; settings_sel = SET_RES; }
       else if (press && focus == 2) scr.id = Screen::Controls;
       else if (press) {
-        if (ready[sel] && ps5_import_state() == 1) {  // the extractor and the engine share process-wide state, so no Play while importing
-          toast = tr(S_BUSY);
-          toast_until = now + 4.0;
-        } else if (ready[sel]) {
+        if (ready[sel]) {
           g_settings.last_game = sel;
           ps5_settings_save();
           out->game = kGames[sel].id;
@@ -818,7 +812,7 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
       }
       const char* qt = ps5_import_queue_text();
       if (qt && qt[0]) text(dl, 28 * S, ImVec2(lx, h - 116 * S), kAmber, qt);
-      if (ps5_import_state() == 1) text(dl, 24 * S, ImVec2(lx, h - 160 * S), IM_COL32(170, 180, 210, 255), tr(S_KEEPON));
+      if (ps5_web_installing()) text(dl, 24 * S, ImVec2(lx, h - 160 * S), IM_COL32(170, 180, 210, 255), tr(S_KEEPON));
       text(dl, 28 * S, ImVec2(lx, h - 66 * S), IM_COL32(170, 180, 210, 255),
            any_ready ? tr(S_HINT) : L("Square: language     Add at least one game to continue", "Quadrat: Sprache     F\xc3\xbc\x67\x65 mindestens ein Spiel hinzu, um fortzufahren"));
     } else {

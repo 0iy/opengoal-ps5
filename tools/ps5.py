@@ -17,7 +17,6 @@
   ps5 qa [options]                  QA pipeline (--quick, --full, --analyze DIR, ...)
   ps5 setup [options]               find the console and install what is missing (installer/ps5_setup.py)
   ps5 import [options]              game import from the PC (installer/pc_import.py)
-  ps5 upload <game> <iso>           upload an ISO through the console web page
   ps5 sync [options]                upstream sync (engine/sync_upstream.py)
   ps5 sym <ps5_log addr> <addr ...> resolve crash addresses to function names (WSL)
   ps5 test [options]                offline test suite (tests/run_all.py)
@@ -119,8 +118,6 @@ def main(argv):
         return script(os.path.join(ROOT, "installer", "ps5_setup.py"), rest)
     if cmd == "import":
         return script(os.path.join(ROOT, "installer", "pc_import.py"), rest)
-    if cmd == "upload":
-        return script(os.path.join(TOOLS, "upload_iso_web.py"), rest)
     if cmd == "sync":
         return script(os.path.join(ROOT, "engine", "sync_upstream.py"), rest)
     if cmd == "test":
