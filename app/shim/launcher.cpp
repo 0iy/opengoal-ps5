@@ -248,20 +248,20 @@ enum Str {
 };
 const char* const kText[2][S_COUNT] = {
     {"Add your games",
-     "Send your own copy of each game from your phone or PC. Nothing leaves your home network.",
-     "1.  Connect your phone or PC to the same network as this PS5.",
-     "2.  Scan the code or open the address below in a browser.",
-     "3.  Pick a game, choose its .iso file and wait. This console does the rest.",
+     "Games are installed from a PC (Windows, macOS or Linux) in the same network. Your discs never leave your home.",
+     "1.  On a PC in the same network, open the address below in a browser.",
+     "2.  Copy the one line shown there into a terminal (PowerShell or Terminal).",
+     "3.  In the window that opens, choose your .iso files and press Start.",
      "Address", "Waiting for a game...", "Receiving", "Unpacking the disc image...", "Analysing game data...",
      "Building the game...", "Done! Go back and press Play.",
      "Import failed. Is it an unmodified .iso of this game?",
      "Keep the console on. This takes a few minutes.", "Square: language     Circle: back",
      "Add games (import ISO)", "Language", "Game data missing - press Cross to add it", "Loading...", "Preparing tools...", "A game is being imported. Wait until it is done."},
     {"Spiele hinzufügen",
-     "Schick deine eigene Kopie jedes Spiels vom Handy oder PC. Nichts verlässt dein Heimnetz.",
-     "1.  Verbinde Handy oder PC mit demselben Netzwerk wie diese PS5.",
-     "2.  Scanne den Code oder öffne die Adresse unten im Browser.",
-     "3.  Wähle ein Spiel, dann die .iso-Datei, und warte. Den Rest erledigt die Konsole.",
+     "Spiele werden von einem PC (Windows, macOS oder Linux) im selben Netz installiert. Deine Discs bleiben zu Hause.",
+     "1.  Öffne auf einem PC im selben Netz die Adresse unten im Browser.",
+     "2.  Kopiere die eine Zeile von dort in ein Terminal (PowerShell oder Terminal).",
+     "3.  Wähle im Fenster, das sich öffnet, deine .iso-Dateien und drücke Starten.",
      "Adresse", "Warte auf ein Spiel...", "Empfange", "Disc-Abbild wird entpackt...", "Spieldaten werden analysiert...",
      "Spiel wird gebaut...", "Fertig! Geh zurück und drücke Spielen.",
      "Import fehlgeschlagen. Ist es eine unveränderte .iso dieses Spiels?",
@@ -688,7 +688,7 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
         std::snprintf(guide, sizeof guide, "%s %s", L("Locked. Open", "Gesperrt. \xc3\x96\x66\x66ne"), import_url.c_str());
         text(dl, 30 * S, ImVec2(sbw + 40 * S, h - 150 * S), IM_COL32(255, 200, 120, 255), guide);
         text(dl, 28 * S, ImVec2(sbw + 40 * S, h - 108 * S), IM_COL32(210, 214, 224, 220),
-             L("on your phone or PC and drop your .iso of this game there.", "auf Handy oder PC und ziehe deine .iso dieses Spiels dorthin."));
+             L("in a browser on your PC and paste the line shown there into a terminal.", "im Browser am PC und f\xc3\xbc\x67\x65 die Zeile von dort in ein Terminal ein."));
       }
       text(dl, 26 * S, ImVec2(sbw + 40 * S, h - 62 * S), IM_COL32(210, 214, 224, 200),
            L("Arrows: move     Cross: select     Circle: game list",
@@ -723,10 +723,10 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
       const float lx = sbw + 64 * S, rx = w - 64 * S;
       text(dl, 54 * S, ImVec2(lx, 50 * S), IM_COL32(255, 255, 255, 255), tr(S_TITLE));
       text(dl, 26 * S, ImVec2(lx, 118 * S), IM_COL32(170, 180, 210, 255),
-           any_ready ? L("Add more games any time: drop the .iso files on the page below.",
-                         "Weitere Spiele jederzeit hinzuf\xc3\xbc\x67\x65n: .iso-Dateien auf die Seite unten ziehen.")
-                     : L("Add at least one game to start playing: drop your .iso on the page below.",
-                         "F\xc3\xbc\x67\x65 mindestens ein Spiel hinzu: ziehe deine .iso auf die Seite unten."));
+           any_ready ? L("Add more games any time from your PC, as shown below.",
+                         "Weitere Spiele jederzeit vom PC aus hinzuf\xc3\xbc\x67\x65n, wie unten gezeigt.")
+                     : L("Add at least one game from your PC to start playing, as shown below.",
+                         "F\xc3\xbc\x67\x65 vom PC aus mindestens ein Spiel hinzu, wie unten gezeigt."));
       // one live card per game
       const float gap = 22 * S, cw = (rx - lx - 2 * gap) / 3, cy = 172 * S, ch = 330 * S;
       for (int i = 0; i < kGameCount; ++i) {
@@ -789,7 +789,7 @@ bool ps5_run_launcher(SDL_Window* window, LaunchChoice* out) {
         } else if (busy && st.stage_percent >= 0) {
           std::snprintf(det, sizeof det, "%s %d%%", label, st.stage_percent);
         } else if (!installed && !busy) {
-          std::snprintf(det, sizeof det, "%s", L("Drop the .iso on the web page", ".iso auf die Webseite ziehen"));
+          std::snprintf(det, sizeof det, "%s", L("Install it from your PC (Add games)", "Vom PC aus installieren (Spiele hinzufügen)"));
         } else if (done) {
           std::snprintf(det, sizeof det, "%s", st.serial[0] ? st.serial : L("Installed", "Installiert"));
         }

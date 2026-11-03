@@ -81,7 +81,8 @@ A window opens: choose or drop your `.iso` files (Jak 1, 2 and 3 are recognised 
 **Test connection**), press **Start**. You see phase, percent, speed and time left per game; the end message is "Ready: start the game on your PS5". German or English
 follows the system language.
 
-**Slower, on the console.** The app shows a QR code. Open `http://<PS5 address>:8080` on a phone or PC and send the `.iso` files ([`ONBOARDING_WEB.md`](ONBOARDING_WEB.md)).
+The app's page (`http://<PS5 address>:8080`, QR code in the app) shows the two one-liners with a Copy button, the installed games and the progress of an install.
+Games are installed from the PC only: building them on the console needs more memory than the app has (Jak 3: 5.6 GB).
 
 ### What the one-liner runs
 
@@ -128,4 +129,5 @@ Optionen: `--ip`, `--no-scan`, `--with-kstuff`, `--update`, `--yes`, `--dry-run`
 alte Weg: `install.bat` oder `sh install.sh --lang de` (FTP).
 
 **Spiele hinzufuegen:** Am schnellsten vom PC: die Zeile fuer dein System aus der Tabelle oben in PowerShell oder das Terminal einfuegen, `.iso`-Dateien waehlen,
-**Start** druecken. Langsamer ueber die Konsole: am Handy oder PC `http://<PS5-Adresse>:8080` oeffnen (QR-Code in der App) und die `.iso`-Images senden.
+**Start** druecken. Die Seite der App (`http://<PS5-Adresse>:8080`, QR-Code in der App) zeigt die Zeilen zum Kopieren, die installierten Spiele und den Fortschritt.
+Spiele werden nur vom PC aus installiert: Auf der Konsole fehlt der Speicher zum Bauen (Jak 3: 5,6 GB).

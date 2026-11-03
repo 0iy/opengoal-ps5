@@ -1,5 +1,9 @@
 # ISO onboarding web page
 
+> **Since 0.3.2 the page no longer takes `.iso` uploads.** It shows the PC one-liners, the installed games and the progress of a PC import
+> (`docs/PC_IMPORT.md`). The upload and console import described below are no longer offered: building a game on the console needs more memory
+> than the app has (Jak 3: 5.6 GB, measured). The server endpoints are still in `webserver.cpp` until they are removed.
+
 Served by the app on port 8080. Files: `app/shim/webpage.cpp` (page), `webserver.cpp` (HTTP, SSE, upload, queue, status), `importer.cpp`
 (extractor wrapper, ISO pre-check, progress hooks), `import_progress.h` (pure percent/ETA logic, host-tested), `include/ps5import.h`
 (C API for the launcher), `engine/patch_import_progress.py` (optional upstream patch). No external requests, no dependencies, no images

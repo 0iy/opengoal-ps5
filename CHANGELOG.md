@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 (2026-11-03)
+
+### Changed
+- One way to add games: from the PC (Windows, macOS or Linux). The app's page (`http://<PS5 address>:8080`, QR code in the app) no longer takes `.iso` uploads; it shows the one line for PowerShell and for the Terminal with a Copy button, the installed games and the progress of an install. The "Add games" screen and the hint on a locked game in the launcher say the same. Building a game on the console needs more memory than the app has (Jak 3: 5.6 GB), the PC import does that part in about a minute
+
 ## 0.3.1 (2026-11-02)
 
 ### Changed
@@ -10,7 +15,7 @@
 - Console import (web page) unpacks big disc files in 8 MB pieces instead of loading each file into memory whole: Jak 3's 1 GB music file ran the app out of memory
 
 ### Known issue
-- Importing Jak 3 through the web page still stops while the console analyses the game data (out of memory). Use the PC import (`install` / the import window) for Jak 3; it builds that part on the PC
+- Importing Jak 3 through the web page still stops while the console analyses the game data (out of memory). Use the PC import (`install` / the import window) for Jak 3; it builds that part on the PC (0.3.2: the page no longer offers the upload)
 
 ## 0.3.0 (2026-11-02)
 
